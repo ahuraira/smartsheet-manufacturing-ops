@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables (IMPORTANT: contains API keys)
+.env
+.env.local
+.env.*.local
+
+# Smartsheet API outputs (may contain sensitive data)
+smartsheet_workspace_metadata.json
+workspace_created_*.json
+workspaces_list.json
+task.md
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
