@@ -1,0 +1,6 @@
+# Azure Functions dependencies
+azure-functions>=1.17.0
+requests>=2.28.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+smartsheet-python-sdk>=3.0.0

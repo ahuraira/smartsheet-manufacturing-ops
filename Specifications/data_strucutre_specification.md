@@ -1,10 +1,28 @@
-# Manufacturing Planning & Inventory System - Data Structure & Data Governance Specification
+# 📊 Data Structure & Data Governance Specification
 
-## 1\. Purpose of This Document
+> **Document Type:** Specification | **Version:** 1.0.0 | **Last Updated:** 2026-01-08
+
+---
+
+## 📋 Quick Links
+
+| Related Documents |
+|-------------------|
+| [Architecture Specification](./architecture_specification.md) - Overall system architecture |
+| [Data Dictionary](../docs/reference/data_dictionary.md) - Complete data reference |
+| [Configuration Reference](../docs/reference/configuration.md) - Config options |
+
+---
+
+## 1. Purpose of This Document
 
 This document defines the **authoritative data structures**, their **relationships**, **lifecycle roles**, and **governance principles** for the Manufacturing Planning, Inventory, and Order Fulfilment system.
 
-It is designed to: - Serve as a **System of Record (SoR) specification** for the prototype and production - Demonstrate **state-of-the-art (SOTA)** robustness, auditability, and scalability - Ensure zero redesign when migrating from Smartsheet → Dataverse / Azure SQL - Enable SAP reconciliation, inventory accuracy, and exception-driven control
+It is designed to:
+- Serve as a **System of Record (SoR) specification** for the prototype and production
+- Demonstrate **state-of-the-art (SOTA)** robustness, auditability, and scalability
+- Ensure zero redesign when migrating from Smartsheet → Dataverse / Azure SQL
+- Enable SAP reconciliation, inventory accuracy, and exception-driven control
 
 This document intentionally treats **data as the product**.
 

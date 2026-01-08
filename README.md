@@ -1,26 +1,43 @@
 # Ducts Manufacturing Inventory Management System
 
-A **Smartsheet-first, migration-ready** manufacturing inventory management system for ducts production planning, allocation, consumption tracking, and delivery operations.
+<p align="center">
+  <strong>A Smartsheet-first, migration-ready manufacturing inventory management system</strong>
+</p>
+
+<p align="center">
+  <a href="docs/index.md">📚 Documentation</a> •
+  <a href="docs/quick_start.md">🚀 Quick Start</a> •
+  <a href="docs/reference/api_reference.md">📘 API Reference</a> •
+  <a href="docs/CONTRIBUTING.md">🤝 Contributing</a>
+</p>
+
+---
 
 ## 🎯 Overview
 
-This system implements a SOTA (State-of-the-Art) framework for:
+This system implements a **state-of-the-art (SOTA)** framework for:
+
 - **Tag-based production planning** with T-1 nesting workflow
 - **Ledger-first inventory control** (allocation → pick → consumption → dispatch)
 - **Exception-driven operations** with full audit trail
 - **SAP integration readiness** (peer system, not master)
 
-## 📋 Features
+### Key Features
 
-- ✅ LPO (Local Purchase Order) management
-- ✅ Tag Sheet Registry with file hash deduplication
-- ✅ Nesting execution logging
-- ✅ Material allocation with shift-based reservations
-- ✅ Consumption tracking with remnant support
-- ✅ Delivery order management (SAP + Virtual DO)
-- ✅ Inventory snapshots (System, SAP, Physical)
-- ✅ Exception handling with SLA tracking
-- ✅ Full user action audit trail
+| Feature | Status |
+|---------|--------|
+| ✅ LPO (Local Purchase Order) management | Implemented |
+| ✅ Tag Sheet Registry with file hash deduplication | Implemented |
+| ✅ Sequence-based ID generation | Implemented |
+| ✅ Idempotent API with retry support | Implemented |
+| ✅ Exception handling with SLA tracking | Implemented |
+| ✅ Full user action audit trail | Implemented |
+| 🔄 Nesting execution logging | Planned |
+| 🔄 Material allocation with shift-based reservations | Planned |
+| 🔄 Consumption tracking with remnant support | Planned |
+| 🔄 Delivery order management | Planned |
+
+---
 
 ## 🏗️ Architecture
 
@@ -28,78 +45,150 @@ This system implements a SOTA (State-of-the-Art) framework for:
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │   Smartsheet    │────▶│  Power Automate  │────▶│   SharePoint    │
 │   (UI + Data)   │     │  (Orchestration) │     │   (File Store)  │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-                               │
-                               ▼
+└─────────────────┘     └────────┬─────────┘     └─────────────────┘
+                                 │
+                                 ▼
                         ┌──────────────────┐
                         │  Azure Functions │
-                        │  (Business Logic)│
-                        └──────────────────┘
-                               │
-                               ▼
+                        │ (Business Logic) │
+                        └────────┬─────────┘
+                                 │
+                                 ▼
                         ┌──────────────────┐
                         │   SAP Connector  │
                         │   (Integration)  │
                         └──────────────────┘
 ```
 
+**Design Principles:**
+- **Separation of concerns** - UI in Smartsheet, logic in Azure Functions
+- **Ledger-first** - All movements are immutable transactions
+- **Idempotency everywhere** - Safe retries with `client_request_id`
+- **Exception as first-class citizens** - All errors create trackable records
+
+For detailed architecture, see [Architecture Overview](docs/architecture_overview.md).
+
+---
+
 ## 📁 Project Structure
 
 ```
-├── Specifications/
-│   ├── architecture_specification.md    # Full system architecture
-│   └── data_structure_specification.md  # Data model & governance
-├── fetch_smartsheet_metadata.py         # Pull workspace metadata
-├── create_workspace.py                  # Create new workspace
-├── config_values.md                     # Config table entries
-├── implementation_plan.md               # Sprint-based plan
-├── requirements.txt                     # Python dependencies
-└── .env.example                         # Environment template
+📦 ducts_manufacturing_inventory_management
+├── 📂 docs/                     # 📖 Documentation
+│   ├── index.md                 # Documentation hub
+│   ├── quick_start.md           # Quick start guide
+│   ├── setup_guide.md           # Development setup
+│   ├── architecture_overview.md # Architecture overview
+│   ├── 📂 reference/            # API & data reference
+│   └── 📂 howto/                # How-to guides
+├── 📂 Specifications/           # 📋 Technical specifications
+│   ├── architecture_specification.md
+│   ├── data_strucutre_specification.md
+│   ├── tag_ingestion_architecture.md
+│   └── flow_architecture.md
+├── 📂 functions/                # ⚡ Azure Functions
+│   ├── fn_ingest_tag/           # Tag ingestion function
+│   ├── shared/                  # Shared modules
+│   └── tests/                   # Test suite
+├── README.md                    # This file
+├── implementation_plan.md       # Development roadmap
+├── config_values.md             # Config table entries
+└── requirements.txt             # Python dependencies
 ```
 
-## 🚀 Getting Started
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Python 3.8+
-- Smartsheet account (EU region)
-- API access token
+- Python 3.9+
+- Azure Functions Core Tools v4+
+- Smartsheet API Key
 
 ### Installation
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/ducts-manufacturing-inventory.git
-cd ducts-manufacturing-inventory
+# Clone repository
+git clone <repository-url>
+cd ducts_manufacturing_inventory_management
+
+# Create virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1  # Windows
+source venv/bin/activate      # macOS/Linux
+
+# Install dependencies
+pip install -r functions/requirements.txt
 ```
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
+### Configure
+
+Create `functions/local.settings.json`:
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "SMARTSHEET_API_KEY": "your_api_key",
+    "SMARTSHEET_WORKSPACE_ID": "your_workspace_id",
+    "SMARTSHEET_BASE_URL": "https://api.smartsheet.eu/2.0"
+  }
+}
 ```
 
-3. Set up environment variables:
+### Run Locally
+
 ```bash
-cp .env.example .env
-# Edit .env with your credentials
+cd functions
+func start
 ```
 
-4. (Optional) Create a new workspace:
+### Test
+
 ```bash
-python create_workspace.py
+cd functions
+pytest
 ```
 
-## ⚙️ Configuration
+For detailed setup, see [Quick Start Guide](docs/quick_start.md) or [Setup Guide](docs/setup_guide.md).
 
-Copy `.env.example` to `.env` and set:
+---
 
-| Variable | Description |
-|----------|-------------|
-| `SMARTSHEET_API_KEY` | Your Smartsheet API token |
-| `SMARTSHEET_WORKSPACE_ID` | Target workspace ID |
-| `SMARTSHEET_BASE_URL` | API base URL (default: EU) |
+## 📊 API Reference
 
-## 📊 Smartsheet Schema
+### Tag Ingestion
+
+```http
+POST /api/tags/ingest
+Content-Type: application/json
+```
+
+```json
+{
+  "client_request_id": "uuid",
+  "lpo_sap_reference": "SAP-001",
+  "required_area_m2": 50.0,
+  "requested_delivery_date": "2026-02-01",
+  "uploaded_by": "user@company.com"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "UPLOADED",
+  "tag_id": "TAG-0001",
+  "trace_id": "trace-abc123",
+  "message": "Tag uploaded successfully"
+}
+```
+
+For complete API documentation, see [API Reference](docs/reference/api_reference.md).
+
+---
+
+## 📋 Smartsheet Schema
 
 The system uses 19 sheets organized in 4 folders:
 
@@ -111,36 +200,90 @@ The system uses 19 sheets organized in 4 folders:
 | 03. Production | Planning, Nesting, Allocation |
 | 04. Production & Delivery | Consumption, Remnant, Delivery, Invoice, Inventory, Exceptions, Audit |
 
+---
+
 ## 🔄 Migration Path
 
-This system is designed for **zero-friction migration** to Azure SQL/Dataverse:
+Designed for **zero-friction migration** to Azure SQL/Dataverse:
 
-1. **Same column names** - Canonical naming across all sheets
-2. **Same data types** - Compatible with SQL schemas
-3. **Logic in Power Automate** - Portable orchestration
-4. **Append-only ledgers** - Simple data export
+| Aspect | Migration Ready |
+|--------|-----------------|
+| ✅ Column names | Canonical across Smartsheet → SQL |
+| ✅ Data types | Compatible with SQL schemas |
+| ✅ Logic location | All in Azure Functions (portable) |
+| ✅ Ledger pattern | Append-only (simple export) |
+
+---
 
 ## 📖 Documentation
 
-- [Architecture Specification](Specifications/architecture_specification.md)
-- [Data Structure Specification](Specifications/data_strucutre_specification.md)
-- [Implementation Plan](implementation_plan.md)
-- [Config Values](config_values.md)
+| Document | Description |
+|----------|-------------|
+| [📚 Documentation Hub](docs/index.md) | Central documentation index |
+| [🚀 Quick Start](docs/quick_start.md) | 15-minute setup guide |
+| [🏗️ Architecture](docs/architecture_overview.md) | System design overview |
+| [📘 API Reference](docs/reference/api_reference.md) | Complete API docs |
+| [📊 Data Dictionary](docs/reference/data_dictionary.md) | Data models and schemas |
+| [🧪 Testing Guide](docs/howto/testing.md) | How to write tests |
+| [🚀 Deployment](docs/howto/deployment.md) | Deployment procedures |
+
+---
 
 ## 🛡️ Security
 
-- API keys stored in environment variables
-- `.gitignore` excludes sensitive files
-- All metadata files excluded from version control
+- API keys stored in environment variables / Key Vault
+- Azure AD authentication for production
+- RBAC for function access
+- `.gitignore` excludes all sensitive files
+- All user actions logged to audit trail
+
+---
+
+## 🧪 Testing
+
+```bash
+cd functions
+
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=shared --cov=fn_ingest_tag
+
+# Run by category
+pytest -m unit
+pytest -m integration
+pytest -m acceptance
+```
+
+See [Testing Guide](docs/howto/testing.md) for details.
+
+---
+
+## 🤝 Contributing
+
+1. Read the [Contributing Guide](docs/CONTRIBUTING.md)
+2. Fork the repository
+3. Create your feature branch
+4. Write tests for new functionality
+5. Submit a Pull Request
+
+---
 
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## 🤝 Contributing
+---
 
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
+## 📞 Support
+
+- Check [Troubleshooting Guide](docs/howto/troubleshooting.md)
+- Search existing GitHub issues
+- Open a new issue with `trace_id` and error details
+
+---
+
+<p align="center">
+  <strong>Built with ❤️ for manufacturing excellence</strong>
+</p>

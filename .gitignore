@@ -30,6 +30,11 @@ workspace_created_*.json
 workspaces_list.json
 task.md
 
+# Azure Functions
+functions/local.settings.json
+.python_packages/
+
+
 # Logs
 *.log
 
@@ -40,3 +45,10 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Test artifacts
+test_result.txt
+test_results_full.log
+
+#Agents
+/.agent

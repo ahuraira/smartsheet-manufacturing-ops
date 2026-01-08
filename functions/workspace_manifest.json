@@ -1,0 +1,1826 @@
+{
+  "_meta": {
+    "description": "Smartsheet Workspace Manifest - Maps logical names to immutable IDs",
+    "version": "1.0.0",
+    "generated_at": "2026-01-08T13:27:35.171371",
+    "generated_by": "fetch_manifest.py",
+    "workspace_id": 8174184812570499,
+    "important": "IDs are immutable. Names are for reference only."
+  },
+  "workspace": {
+    "id": 8174184812570499,
+    "name": "Ducts (Dev Environment0"
+  },
+  "folders": {
+    "01_COMMERCIAL_AND_DEMAND": {
+      "id": 7653536126265219,
+      "name": "01. Commercial and Demand"
+    },
+    "02_TAG_SHEET_REGISTRY": {
+      "id": 439640336426883,
+      "name": "02. Tag Sheet Registry"
+    },
+    "03_PRODUCTION_PLANNING": {
+      "id": 7690232326842243,
+      "name": "03. Production Planning"
+    },
+    "04_PRODUCTION_AND_DELIVERY": {
+      "id": 6643497257199491,
+      "name": "04. Production and Delivery"
+    }
+  },
+  "sheets": {
+    "REFERENCE_DATA": {
+      "id": 5264016123496324,
+      "name": "00 Reference Data",
+      "folder": null,
+      "columns": {
+        "CUSTOMER_NAME": {
+          "id": 3625758801135492,
+          "name": "Customer Name",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "TERMS_OF_PAYMENT_ID": {
+          "id": 8129358428505988,
+          "name": "Terms of Payment ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "TERMS_OF_PAYMENT": {
+          "id": 5307385600149380,
+          "name": "Terms of Payment",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "CURRENCY_CODE": {
+          "id": 6440508568242052,
+          "name": "Currency Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        }
+      }
+    },
+    "CONFIG": {
+      "id": 3235631247525764,
+      "name": "00a Config",
+      "folder": null,
+      "columns": {
+        "CONFIG_KEY": {
+          "id": 4220843834083204,
+          "name": "config_key",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "CONFIG_VALUE": {
+          "id": 8724443461453700,
+          "name": "config_value",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "EFFECTIVE_FROM": {
+          "id": 561669136844676,
+          "name": "effective_from",
+          "type": "DATE",
+          "primary": false,
+          "index": 2
+        },
+        "CHANGED_BY": {
+          "id": 5065268764215172,
+          "name": "changed_by",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        }
+      }
+    },
+    "LPO_AUDIT": {
+      "id": 689910312994692,
+      "name": "01 LPO Audit LOG",
+      "folder": "01_COMMERCIAL_AND_DEMAND",
+      "columns": {
+        "SNAPSHOT_TIMESTAMP": {
+          "id": 6595976720680836,
+          "name": "Snapshot Timestamp",
+          "type": "DATE",
+          "primary": false,
+          "index": 0
+        },
+        "ACTION_TYPE": {
+          "id": 4344176906995588,
+          "name": "Action Type",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "ACTOR": {
+          "id": 8847776534366084,
+          "name": "Actor",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "LPO_ID": {
+          "id": 3540280362010500,
+          "name": "LPO ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "CUSTOMER_LPO_REF": {
+          "id": 8043879989380996,
+          "name": "Customer LPO Ref",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 4
+        },
+        "SAP_REFERENCE": {
+          "id": 725530594903940,
+          "name": "SAP Reference",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "CUSTOMER_NAME": {
+          "id": 5229130222274436,
+          "name": "Customer Name",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "PROJECT_NAME": {
+          "id": 2977330408589188,
+          "name": "Project Name",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "LPO_STATUS": {
+          "id": 7480930035959684,
+          "name": "LPO Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 8
+        },
+        "BRAND": {
+          "id": 1851430501746564,
+          "name": "Brand",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 9
+        },
+        "WASTAGE_CONSIDERED_IN_COSTING": {
+          "id": 6355030129117060,
+          "name": "Wastage Considered in Costing",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 10
+        },
+        "PRICE_AED_PER_SQM": {
+          "id": 4103230315431812,
+          "name": "Price (AED per Sqm)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 11
+        },
+        "PO_QUANTITY_SQM": {
+          "id": 8606829942802308,
+          "name": "PO Quantity (Sqm)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 12
+        },
+        "PO_VALUE": {
+          "id": 444055618193284,
+          "name": "PO Value",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 13
+        },
+        "TERMS_OF_PAYMENT": {
+          "id": 4947655245563780,
+          "name": "Terms of Payment",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 14
+        },
+        "HOLD_REASON": {
+          "id": 2695855431878532,
+          "name": "Hold Reason",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 15
+        },
+        "TOTAL_ALLOCATED_COST": {
+          "id": 7199455059249028,
+          "name": "Total Allocated Cost",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 16
+        },
+        "DELIVERED_QUANTITY_SQM": {
+          "id": 1569955525035908,
+          "name": "Delivered Quantity (Sqm)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 17
+        },
+        "DELIVERED_VALUE": {
+          "id": 6073555152406404,
+          "name": "Delivered Value",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 18
+        },
+        "ESTIMATED_IN_PRODUCTION_3_DAYS": {
+          "id": 3821755338721156,
+          "name": "Estimated in-production (3 days)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 19
+        },
+        "PO_BALANCE_QUANTITY": {
+          "id": 8325354966091652,
+          "name": "PO Balance Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 20
+        },
+        "BALANCE_VALUE_AED": {
+          "id": 1007005571614596,
+          "name": "Balance Value (AED)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 21
+        },
+        "CURRENT_STATUS": {
+          "id": 5510605198985092,
+          "name": "Current Status",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 22
+        },
+        "REMARKS": {
+          "id": 3258805385299844,
+          "name": "Remarks",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 23
+        },
+        "DELIVERED_DATE": {
+          "id": 7762405012670340,
+          "name": "Delivered Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 24
+        },
+        "APPROVAL_STATUS": {
+          "id": 2132905478457220,
+          "name": "Approval Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 25
+        },
+        "NUMBER_OF_DELIVERIES": {
+          "id": 6636505105827716,
+          "name": "Number of Deliveries",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 26
+        },
+        "NEW_TEST": {
+          "id": 4384705292142468,
+          "name": "New test",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 27
+        }
+      }
+    },
+    "LPO_MASTER": {
+      "id": 4600031359403908,
+      "name": "01 LPO Master LOG",
+      "folder": "01_COMMERCIAL_AND_DEMAND",
+      "columns": {
+        "LPO_ID": {
+          "id": 7634826230368132,
+          "name": "LPO ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 0
+        },
+        "CUSTOMER_LPO_REF": {
+          "id": 4690809087723396,
+          "name": "Customer LPO Ref",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 1
+        },
+        "SAP_REFERENCE": {
+          "id": 2439009274038148,
+          "name": "SAP Reference",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "CUSTOMER_NAME": {
+          "id": 6942608901408644,
+          "name": "Customer Name",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "PROJECT_NAME": {
+          "id": 1313109367195524,
+          "name": "Project Name",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "LPO_STATUS": {
+          "id": 1093328642901892,
+          "name": "LPO Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 5
+        },
+        "BRAND": {
+          "id": 2720484250748804,
+          "name": "Brand",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 6
+        },
+        "WASTAGE_CONSIDERED_IN_COSTING": {
+          "id": 6727775979440004,
+          "name": "Wastage Considered in Costing",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "PRICE_AED_PER_SQM": {
+          "id": 5816708994566020,
+          "name": "Price (AED per Sqm)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        },
+        "PO_QUANTITY_SQM": {
+          "id": 3564909180880772,
+          "name": "PO Quantity (Sqm)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 9
+        },
+        "PO_VALUE": {
+          "id": 8068508808251268,
+          "name": "PO Value",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 10
+        },
+        "TERMS_OF_PAYMENT": {
+          "id": 7289209809405828,
+          "name": "Terms of Payment",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 11
+        },
+        "HOLD_REASON": {
+          "id": 5035210972465028,
+          "name": "Hold Reason",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 12
+        },
+        "TOTAL_ALLOCATED_COST": {
+          "id": 8202654863984516,
+          "name": "Total Allocated Cost",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 13
+        },
+        "DELIVERED_QUANTITY_SQM": {
+          "id": 750159413774212,
+          "name": "Delivered Quantity (Sqm)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 14
+        },
+        "DELIVERED_VALUE": {
+          "id": 5253759041144708,
+          "name": "Delivered Value",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 15
+        },
+        "ESTIMATED_IN_PRODUCTION_3_DAYS": {
+          "id": 3001959227459460,
+          "name": "Estimated in-production (3 days)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 16
+        },
+        "PO_BALANCE_QUANTITY": {
+          "id": 7505558854829956,
+          "name": "PO Balance Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 17
+        },
+        "BALANCE_VALUE_AED": {
+          "id": 1876059320616836,
+          "name": "Balance Value (AED)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 18
+        },
+        "CURRENT_STATUS": {
+          "id": 6379658947987332,
+          "name": "Current Status",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 19
+        },
+        "REMARKS": {
+          "id": 4127859134302084,
+          "name": "Remarks",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 20
+        },
+        "DELIVERED_DATE": {
+          "id": 8631458761672580,
+          "name": "Delivered Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 21
+        },
+        "APPROVAL_STATUS": {
+          "id": 468684437063556,
+          "name": "Approval Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 22
+        },
+        "NUMBER_OF_DELIVERIES": {
+          "id": 4972284064434052,
+          "name": "Number of Deliveries",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 23
+        }
+      }
+    },
+    "TAG_REGISTRY": {
+      "id": 6345935565227908,
+      "name": "02 Tag Sheet Registry",
+      "folder": "02_TAG_SHEET_REGISTRY",
+      "columns": {
+        "TAG_ID": {
+          "id": 8127407439611780,
+          "name": "Tag ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 0
+        },
+        "DATE_TAG_SHEET_RECEIVED": {
+          "id": 6558400454461316,
+          "name": "Date Tag Sheet Received",
+          "type": "DATETIME",
+          "primary": false,
+          "index": 1
+        },
+        "TAG_NAME": {
+          "id": 5432500547618692,
+          "name": "Tag Sheet Name/ Rev",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 2
+        },
+        "REQUIRED_DELIVERY_DATE": {
+          "id": 1351113385314180,
+          "name": "Required Delivery Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 3
+        },
+        "LPO_SAP_REFERENCE": {
+          "id": 1937577479374724,
+          "name": "LPO SAP Reference Link",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 4
+        },
+        "LPO_STATUS": {
+          "id": 1373459294848900,
+          "name": "LPO Status",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "LPO_ALLOWABLE_WASTAGE": {
+          "id": 3417631799510916,
+          "name": "LPO Allowable Wastage",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "PRODUCTION_GATE": {
+          "id": 6023242429106052,
+          "name": "Production Gate",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 7
+        },
+        "BRAND": {
+          "id": 2011304887977860,
+          "name": "Brand",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 8
+        },
+        "CUSTOMER_NAME": {
+          "id": 3180700733933444,
+          "name": "Customer Name",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 9
+        },
+        "PROJECT": {
+          "id": 7684300361303940,
+          "name": "Project",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 10
+        },
+        "LOCATION": {
+          "id": 8810200268146564,
+          "name": "Location:",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 11
+        },
+        "ESTIMATED_QUANTITY": {
+          "id": 6978339539650436,
+          "name": "Estimated Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 12
+        },
+        "SHEETS_USED": {
+          "id": 2350910502209412,
+          "name": "Sheets Used",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 13
+        },
+        "WASTAGE_NESTED": {
+          "id": 6854510129579908,
+          "name": "Wastage Nested",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 14
+        },
+        "STATUS": {
+          "id": 6980612919527300,
+          "name": "Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 15
+        },
+        "PLANNED_CUT_DATE": {
+          "id": 5461391987312516,
+          "name": "Planned Cut Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 16
+        },
+        "ALLOCATION_BATCH_ID": {
+          "id": 1225010595366788,
+          "name": "Allocation Batch ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 17
+        },
+        "SUBMITTED_BY": {
+          "id": 8979708937111428,
+          "name": "Submitted By",
+          "type": "CONTACT_LIST",
+          "primary": false,
+          "index": 18
+        },
+        "RECEIVED_THROUGH": {
+          "id": 4728813105842052,
+          "name": "Received Through",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 19
+        },
+        "REMARKS": {
+          "id": 3602913198999428,
+          "name": "Remarks:",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 20
+        },
+        "FILE_HASH": {
+          "id": 2612711441696644,
+          "name": "File Hash",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 21
+        },
+        "CLIENT_REQUEST_ID": {
+          "id": 7116311069067140,
+          "name": "Client Request ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 22
+        }
+      }
+    },
+    "PRODUCTION_PLANNING": {
+      "id": 5712479428675460,
+      "name": "03 Production Planning",
+      "folder": "03_PRODUCTION_PLANNING",
+      "columns": {
+        "SCHEDULE_ID": {
+          "id": 7783368076953476,
+          "name": "Schedule ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "TAG_SHEET_ID": {
+          "id": 300529219667844,
+          "name": "Tag Sheet ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "PLANNED_DATE": {
+          "id": 8470175491950468,
+          "name": "Planned Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 2
+        },
+        "SHIFT": {
+          "id": 4804128847038340,
+          "name": "Shift",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 3
+        },
+        "MACHINE_ASSIGNED": {
+          "id": 5092269612992388,
+          "name": "Machine Assigned",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 4
+        },
+        "ALLOCATION_STATUS": {
+          "id": 2153868542740356,
+          "name": "Allocation Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 5
+        }
+      }
+    },
+    "NESTING_LOG": {
+      "id": 4868054498543492,
+      "name": "04 Nesting Execution Log",
+      "folder": "03_PRODUCTION_PLANNING",
+      "columns": {
+        "NEST_SESSION_ID": {
+          "id": 5839431519045508,
+          "name": "Nest Session ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "TAG_SHEET_ID": {
+          "id": 3587631705360260,
+          "name": "Tag Sheet ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "TIMESTAMP": {
+          "id": 3678366379149188,
+          "name": "Timestamp",
+          "type": "DATE",
+          "primary": false,
+          "index": 2
+        },
+        "BRAND": {
+          "id": 8186742010152836,
+          "name": "Brand",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 3
+        },
+        "SHEETS_CONSUMED_VIRTUAL": {
+          "id": 3122528891570052,
+          "name": "Sheets Consumed Virtual",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "EXPECTED_CONSUMPTION_M2": {
+          "id": 6943336319551364,
+          "name": "Expected Consumption m2",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "WASTAGE_PERCENTAGE": {
+          "id": 7626128518940548,
+          "name": "Wastage Percentage",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "PLANNED_DATE": {
+          "id": 8091231332730756,
+          "name": "Planned Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 7
+        },
+        "REMNANT_ID_GENERATED": {
+          "id": 7617538584348548,
+          "name": "Remnant ID Generated",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        },
+        "FILLER_IDS_GENERATED": {
+          "id": 1992437096646532,
+          "name": "Filler IDs Generated",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 9
+        },
+        "FILE_HASH": {
+          "id": 4689612360517508,
+          "name": "File Hash",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 10
+        },
+        "CLIENT_REQUEST_ID": {
+          "id": 2442210593343364,
+          "name": "Client Request ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 11
+        }
+      }
+    },
+    "ALLOCATION_LOG": {
+      "id": 1911347472369540,
+      "name": "05 Allocation Log",
+      "folder": "03_PRODUCTION_PLANNING",
+      "columns": {
+        "ALLOCATION_ID": {
+          "id": 7278391592093572,
+          "name": "Allocation ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "NESTING_SESSION_ID": {
+          "id": 8496448033392516,
+          "name": "Nesting Session ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "TAG_SHEET_ID": {
+          "id": 1648892057880452,
+          "name": "Tag Sheet ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "MATERIAL_CODE": {
+          "id": 1085942104459140,
+          "name": "Material Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "QUANTITY": {
+          "id": 5589541731829636,
+          "name": "Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "PLANNED_DATE": {
+          "id": 3900691871565700,
+          "name": "Planned Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 5
+        },
+        "SHIFT": {
+          "id": 8404291498936196,
+          "name": "Shift",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 6
+        },
+        "STATUS": {
+          "id": 6152491685250948,
+          "name": "Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 7
+        },
+        "STOCK_CHECK_FLAG": {
+          "id": 3337741918144388,
+          "name": "Stock Check Flag",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 8
+        },
+        "ALLOCATED_AT": {
+          "id": 6149988524623748,
+          "name": "Allocated At",
+          "type": "DATE",
+          "primary": false,
+          "index": 9
+        },
+        "RESERVED_UNTILL": {
+          "id": 807798680192900,
+          "name": "Reserved Untill",
+          "type": "DATE",
+          "primary": false,
+          "index": 10
+        },
+        "REMARKS": {
+          "id": 7841341545514884,
+          "name": "Remarks",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 11
+        }
+      }
+    },
+    "CONSUMPTION_LOG": {
+      "id": 1842061059950468,
+      "name": "06 Consumption Log",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "CONSUMPTION_ID": {
+          "id": 4202662432212868,
+          "name": "Consumption ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "ALLOCATION_ID": {
+          "id": 6805708387518340,
+          "name": "Allocation ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "TAG_SHEET_ID": {
+          "id": 8706262059583364,
+          "name": "Tag Sheet ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "STATUS": {
+          "id": 7266336961070980,
+          "name": "Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 3
+        },
+        "CONSUMPTION_DATE": {
+          "id": 543487734974340,
+          "name": "Consumption Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 4
+        },
+        "SHIFT": {
+          "id": 5047087362344836,
+          "name": "Shift",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 5
+        },
+        "MATERIAL_CODE": {
+          "id": 2795287548659588,
+          "name": "Material Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "QUANTITY": {
+          "id": 3611972627203972,
+          "name": "Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "REMNANT_ID": {
+          "id": 5298073708398468,
+          "name": "Remnant ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        },
+        "REMARKS": {
+          "id": 7298887176030084,
+          "name": "Remarks",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 9
+        }
+      }
+    },
+    "REMNANT_LOG": {
+      "id": 8905507769288580,
+      "name": "06a Remnant Log",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "REMNANT_ID": {
+          "id": 1119539217696644,
+          "name": "Remnant ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "SESSION_ID": {
+          "id": 5623138845067140,
+          "name": "Session ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "STATUS": {
+          "id": 3371339031381892,
+          "name": "Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 2
+        },
+        "MATERIAL_CODE": {
+          "id": 6749038751909764,
+          "name": "Material Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "DIMENSIONS": {
+          "id": 4497238938224516,
+          "name": "Dimensions",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "AREA_M2": {
+          "id": 7401160279459716,
+          "name": "Area m2",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "CREATED_AT": {
+          "id": 1771660745246596,
+          "name": "Created at",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "CONSUMPTION_DATE": {
+          "id": 7874938658752388,
+          "name": "Consumption Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 7
+        },
+        "REMARKS": {
+          "id": 6833450387332,
+          "name": "Remarks",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        }
+      }
+    },
+    "FILLER_LOG": {
+      "id": 4401263896823684,
+      "name": "06b Filler Log",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "FILLER_ID": {
+          "id": 5185584756819844,
+          "name": "Filler ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "SESSION_ID": {
+          "id": 2933784943134596,
+          "name": "Session ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "SAP_PO_REFERENCE": {
+          "id": 6556718169458564,
+          "name": "SAP PO Reference",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 2
+        },
+        "STATUS": {
+          "id": 7437384570505092,
+          "name": "Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 3
+        },
+        "MATERIAL_CODE": {
+          "id": 1807885036291972,
+          "name": "Material Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "TYPE": {
+          "id": 4477540070721412,
+          "name": "Type",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 5
+        },
+        "DIMENSIONS": {
+          "id": 6311484663662468,
+          "name": "Dimensions",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "AREA_M2": {
+          "id": 4059684849977220,
+          "name": "Area m2",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "CREATED_AT": {
+          "id": 8563284477347716,
+          "name": "Created at",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        },
+        "CONSUMPTION_DATE": {
+          "id": 400510152738692,
+          "name": "Consumption Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 9
+        },
+        "REMARKS": {
+          "id": 4904109780109188,
+          "name": "Remarks",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 10
+        }
+      }
+    },
+    "DELIVERY_LOG": {
+      "id": 7427489263650692,
+      "name": "07 Delivery Log",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "DELIVERY_ID": {
+          "id": 2588314953713540,
+          "name": "Delivery ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "SAP_DO_NUMBER": {
+          "id": 4445612894455684,
+          "name": "SAP DO Number",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "TAG_SHEET_ID": {
+          "id": 7091914581084036,
+          "name": "Tag Sheet ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "SAP_INVOICE_NUMBER": {
+          "id": 4551166010722180,
+          "name": "SAP Invoice Number",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "STATUS": {
+          "id": 1462415046870916,
+          "name": "Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 4
+        },
+        "LINES": {
+          "id": 5966014674241412,
+          "name": "Lines",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "QUANTITY": {
+          "id": 8217814487926660,
+          "name": "Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "VALUE": {
+          "id": 8949212521826180,
+          "name": "Value",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "VEHICLE_ID": {
+          "id": 47566383351684,
+          "name": "Vehicle ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        },
+        "CREATED_AT": {
+          "id": 899465093449604,
+          "name": "Created at",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 9
+        },
+        "REMARKS": {
+          "id": 3151264907134852,
+          "name": "Remarks",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 10
+        }
+      }
+    },
+    "INVOICE_LOG": {
+      "id": 8485335413688196,
+      "name": "08 Invoice Log",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "INVOICE_ID": {
+          "id": 3073084691187588,
+          "name": "Invoice ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "SAP_INVOICE_NUMBER": {
+          "id": 6450784411715460,
+          "name": "SAP Invoice Number",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 1
+        },
+        "INVOICE_DATE": {
+          "id": 4370139044775812,
+          "name": "Invoice Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 2
+        },
+        "STATUS": {
+          "id": 4198984598030212,
+          "name": "Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 3
+        },
+        "PAYMENT_DATE": {
+          "id": 8873738672146308,
+          "name": "Payment Date",
+          "type": "DATE",
+          "primary": false,
+          "index": 4
+        },
+        "DO_ID_S": {
+          "id": 6621938858461060,
+          "name": "DO ID(s)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "SAP_DO_NUMBER_S": {
+          "id": 2118339231090564,
+          "name": "SAP DO Number(s)",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "TERMS_OF_PAYMENT": {
+          "id": 77645649938308,
+          "name": "Terms of Payment",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "PAYMENT_DUE_DATE": {
+          "id": 4581245277308804,
+          "name": "Payment Due Date",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        },
+        "REMARKS": {
+          "id": 6169309435004804,
+          "name": "Remarks",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 9
+        }
+      }
+    },
+    "INVENTORY_TXN_LOG": {
+      "id": 3108054210054020,
+      "name": "90 Inventory Txn Log",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "TXN_ID": {
+          "id": 3581974159689604,
+          "name": "Txn ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "TXN_DATE": {
+          "id": 8085573787060100,
+          "name": "Txn Date",
+          "type": "DATETIME",
+          "primary": false,
+          "index": 1
+        },
+        "TXN_TYPE": {
+          "id": 7313169687119748,
+          "name": "Txn Type",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 2
+        },
+        "MATERIAL_CODE": {
+          "id": 767224392583044,
+          "name": "Material Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "QUANTITY": {
+          "id": 5270824019953540,
+          "name": "Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "REFERENCE_DOC": {
+          "id": 3019024206268292,
+          "name": "Reference Doc",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "SOURCE_SYSTEM": {
+          "id": 3984605600417668,
+          "name": "Source System",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 6
+        },
+        "CREATED_BY": {
+          "id": 8488205227788164,
+          "name": "Created By",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "TRACE_ID": {
+          "id": 325430903179140,
+          "name": "Trace ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        },
+        "CLIENT_REQUEST_ID": {
+          "id": 7910725400004484,
+          "name": "Client Request ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 9
+        }
+      }
+    },
+    "INVENTORY_SNAPSHOT": {
+      "id": 6653433077696388,
+      "name": "91 Inventory Snapshot",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "SNAPSHOT_ID": {
+          "id": 2183694674691972,
+          "name": "Snapshot ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "SNAPSHOT_TIMESTAMP": {
+          "id": 6687294302062468,
+          "name": "Snapshot Timestamp",
+          "type": "DATETIME",
+          "primary": false,
+          "index": 1
+        },
+        "SNAPSHOT_TYPE": {
+          "id": 7400971300898692,
+          "name": "Snapshot Type",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "PLANT": {
+          "id": 1771471766685572,
+          "name": "Plant",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "MATERIAL_CODE": {
+          "id": 8939094115747716,
+          "name": "Material Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "UOM": {
+          "id": 6275071394056068,
+          "name": "UOM",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "SAP_QUANTITY": {
+          "id": 37447977273220,
+          "name": "SAP Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "ALLOCATED_QUANTITY": {
+          "id": 4541047604643716,
+          "name": "Allocated Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "PLANNED_QUANTITY": {
+          "id": 4023271580370820,
+          "name": "Planned Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        },
+        "ACTUAL_CONSUMPTION": {
+          "id": 8526871207741316,
+          "name": "Actual Consumption",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 9
+        },
+        "SYSTEM_CLOSING_QUANTITY": {
+          "id": 364096883132292,
+          "name": "System Closing Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 10
+        },
+        "PHYSICAL_CLOSING_QUANTITY": {
+          "id": 4867696510502788,
+          "name": "Physical Closing Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 11
+        },
+        "VARIANCE_QUANTITY": {
+          "id": 2615896696817540,
+          "name": "Variance Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 12
+        }
+      }
+    },
+    "SAP_INVENTORY_SNAPSHOT": {
+      "id": 1022842621790084,
+      "name": "92 SAP Inventory Snapshot",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "SAP_SNAPSHOT_ID": {
+          "id": 7420015185889156,
+          "name": "SAP Snapshot ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "SNAPSHOT_TIMESTAMP": {
+          "id": 1790515651676036,
+          "name": "Snapshot Timestamp",
+          "type": "DATETIME",
+          "primary": false,
+          "index": 1
+        },
+        "MATERIAL_CODE": {
+          "id": 4042315465361284,
+          "name": "Material Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "UOM": {
+          "id": 5993441798522756,
+          "name": "UOM",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "UNRESTRICTED_QUANTITY": {
+          "id": 8545915092731780,
+          "name": "Unrestricted Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "IN_TRANSIT_QUANTITY": {
+          "id": 383140768122756,
+          "name": "In Transit Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "WIP_QUANTITY": {
+          "id": 3741641984837508,
+          "name": "WIP Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        }
+      }
+    },
+    "PHYSICAL_INVENTORY_SNAPSHOT": {
+      "id": 3732883233703812,
+      "name": "93 Physical Inventory Snapshot",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "PHYSICAL_SNAPSHOT_ID": {
+          "id": 6050482722310020,
+          "name": "Physical Snapshot ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "SNAPSHOT_TIMESTAMP": {
+          "id": 3798682908624772,
+          "name": "Snapshot Timestamp",
+          "type": "DATETIME",
+          "primary": false,
+          "index": 1
+        },
+        "PLANT": {
+          "id": 1894691694053252,
+          "name": "Plant",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "MATERIAL_CODE": {
+          "id": 8302282535995268,
+          "name": "Material Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "UOM": {
+          "id": 983933141518212,
+          "name": "UOM",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "PHYSICAL_QUANTITY": {
+          "id": 5487532768888708,
+          "name": "Physical Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "COUNTED_BY": {
+          "id": 6398291321423748,
+          "name": "Counted By",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "VARIANCE_POSTED": {
+          "id": 4146491507738500,
+          "name": "Variance Posted",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 7
+        }
+      }
+    },
+    "OVERRIDE_LOG": {
+      "id": 1235205132257156,
+      "name": "97 Override Log",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "OVERRIDE_ID": {
+          "id": 3727317732034436,
+          "name": "Override ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "TIMESTAMP": {
+          "id": 8230917359404932,
+          "name": "Timestamp",
+          "type": "DATETIME",
+          "primary": false,
+          "index": 1
+        },
+        "REQUESTED_BY": {
+          "id": 912567964927876,
+          "name": "Requested By",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "REASON": {
+          "id": 5416167592298372,
+          "name": "Reason",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "RELATED_ENTITY": {
+          "id": 3164367778613124,
+          "name": "Related Entity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "ENTITY_ID": {
+          "id": 7667967405983620,
+          "name": "Entity ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "REQUESTED_ACTION": {
+          "id": 2038467871770500,
+          "name": "Requested Action",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "APPROVAL": {
+          "id": 6542067499140996,
+          "name": "Approval",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "DECISION": {
+          "id": 4290267685455748,
+          "name": "Decision",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        },
+        "DECISION_TIMESTAMP": {
+          "id": 2184331403593604,
+          "name": "Decision Timestamp",
+          "type": "DATE",
+          "primary": false,
+          "index": 9
+        }
+      }
+    },
+    "USER_ACTION_LOG": {
+      "id": 2646293015037828,
+      "name": "98 User Action Log",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "ACTION_ID": {
+          "id": 6490594463582084,
+          "name": "Action ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "TIMESTAMP": {
+          "id": 4238794649896836,
+          "name": "Timestamp",
+          "type": "DATETIME",
+          "primary": false,
+          "index": 1
+        },
+        "USER_ID": {
+          "id": 8742394277267332,
+          "name": "User ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 2
+        },
+        "ACTION_TYPE": {
+          "id": 157407487592324,
+          "name": "Action Type",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "TARGET_TABLE": {
+          "id": 4661007114962820,
+          "name": "Target Table",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "TARGET_ID": {
+          "id": 2409207301277572,
+          "name": "Target ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "OLD_VALUE": {
+          "id": 6912806928648068,
+          "name": "Old Value",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "NEW_VALUE": {
+          "id": 1283307394434948,
+          "name": "New Value",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 7
+        },
+        "NOTES": {
+          "id": 4498335228626820,
+          "name": "Notes",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 8
+        }
+      }
+    },
+    "EXCEPTION_LOG": {
+      "id": 325172429195140,
+      "name": "99 Exception Log",
+      "folder": "04_PRODUCTION_AND_DELIVERY",
+      "columns": {
+        "EXCEPTION_ID": {
+          "id": 8643519835146116,
+          "name": "Exception ID",
+          "type": "TEXT_NUMBER",
+          "primary": true,
+          "index": 0
+        },
+        "CREATED_AT": {
+          "id": 480745510537092,
+          "name": "Created At",
+          "type": "DATETIME",
+          "primary": false,
+          "index": 1
+        },
+        "SOURCE": {
+          "id": 4984345137907588,
+          "name": "Source",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 2
+        },
+        "RELATED_TAG_ID": {
+          "id": 2732545324222340,
+          "name": "Related Tag ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 3
+        },
+        "RELATED_TXN_ID": {
+          "id": 7236144951592836,
+          "name": "Related Txn ID",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 4
+        },
+        "MATERIAL_CODE": {
+          "id": 1606645417379716,
+          "name": "Material Code",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 5
+        },
+        "QUANTITY": {
+          "id": 6110245044750212,
+          "name": "Quantity",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 6
+        },
+        "REASON_CODE": {
+          "id": 3858445231064964,
+          "name": "Reason Code",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 7
+        },
+        "SEVERITY": {
+          "id": 5069449914877828,
+          "name": "Severity",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 8
+        },
+        "ASSIGNED_TO": {
+          "id": 2817650101192580,
+          "name": "Assigned To",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 9
+        },
+        "STATUS": {
+          "id": 7321249728563076,
+          "name": "Status",
+          "type": "PICKLIST",
+          "primary": false,
+          "index": 10
+        },
+        "APPROVALS": {
+          "id": 1691750194349956,
+          "name": "Approvals",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 11
+        },
+        "SLA_DUE": {
+          "id": 6195349821720452,
+          "name": "SLA Due",
+          "type": "DATE",
+          "primary": false,
+          "index": 12
+        },
+        "ATTACHMENT_LINKS": {
+          "id": 3943550008035204,
+          "name": "Attachment Links",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 13
+        },
+        "RESOLUTION_ACTION": {
+          "id": 8447149635405700,
+          "name": "Resolution Action",
+          "type": "TEXT_NUMBER",
+          "primary": false,
+          "index": 14
+        }
+      }
+    }
+  }
+}

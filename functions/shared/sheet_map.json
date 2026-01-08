@@ -1,0 +1,21 @@
+{
+  "00 Reference Data": 5264016123496324,
+  "00a Config": 3235631247525764,
+  "01 LPO Master LOG": 4600031359403908,
+  "01 LPO Audit LOG": 689910312994692,
+  "03 Production Planning": 5712479428675460,
+  "04 Nesting Execution Log": 4868054498543492,
+  "05 Allocation Log": 1911347472369540,
+  "06 Consumption Log": 1842061059950468,
+  "06a Remnant Log": 8905507769288580,
+  "06b Filler Log": 4401263896823684,
+  "07 Delivery Log": 7427489263650692,
+  "08 Invoice Log": 8485335413688196,
+  "90 Inventory Txn Log": 3108054210054020,
+  "91 Inventory Snapshot": 6653433077696388,
+  "92 SAP Inventory Snapshot": 1022842621790084,
+  "93 Physical Inventory Snapshot": 3732883233703812,
+  "97 Override Log": 1235205132257156,
+  "98 User Action Log": 2646293015037828,
+  "99 Exception Log": 325172429195140
+}

@@ -1,0 +1,15 @@
+{
+    "_meta": {
+        "description": "Smartsheet Workspace Manifest - Contains immutable IDs for all sheets and columns",
+        "version": "1.0.0",
+        "generated_at": null,
+        "generated_by": "create_workspace.py",
+        "important": "IDs are immutable. Names are for reference only. Do NOT edit IDs manually."
+    },
+    "workspace": {
+        "id": null,
+        "name": null
+    },
+    "folders": {},
+    "sheets": {}
+}

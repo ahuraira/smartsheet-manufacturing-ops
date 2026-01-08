@@ -1,4 +1,24 @@
-Two *key decisions* I made (and why):
+# 🏗️ System Architecture Specification
+
+> **Document Type:** Specification | **Version:** 1.0.0 | **Last Updated:** 2026-01-08
+
+---
+
+## 📋 Quick Links
+
+| Related Documents |
+|-------------------|
+| [Architecture Overview](../docs/architecture_overview.md) - High-level overview |
+| [Data Structure Specification](./data_strucutre_specification.md) - Data governance |
+| [Tag Ingestion Architecture](./tag_ingestion_architecture.md) - Tag flow details |
+| [Flow Architecture](./flow_architecture.md) - Power Automate design |
+| [API Reference](../docs/reference/api_reference.md) - API documentation |
+
+---
+
+## Key Decisions
+
+Two *key decisions* made (and why):
 
 * **Nesting = planning (T-1).** A nesting export is *the engineering truth* for expected consumption and remnant detection, and must be done ≥1 day before production.
 * **Allocation = soft reservation at T-1 (after parse).** Allocation is created immediately after successful parse to reserve material per shift. Physical stock is only consumed when storekeeper *confirms pick* (after production has completed). This keeps planning predictable, prevents double-booking, and keeps physical consumption aligned to reality.
