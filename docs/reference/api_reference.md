@@ -198,9 +198,12 @@ Content-Type: application/json
   "required_area_m2": 120.25,
   "requested_delivery_date": "2026-02-01",
   "file_url": "https://tenant.sharepoint/.../TAG-123.xlsx",
+  "file_content": "base64-encoded-file-content...",
   "original_file_name": "TAG-123_cutexport_v1.xlsx",
   "uploaded_by": "user@company.com",
   "tag_name": "TAG-123 Rev A",
+  "received_through": "Email",
+  "user_remarks": "Urgent delivery needed",
   "metadata": {
     "truck_size": "small",
     "notes": "urgent"
@@ -219,11 +222,16 @@ Content-Type: application/json
 | `lpo_sap_reference` | string | No² | SAP reference for the LPO |
 | `required_area_m2` | number | Yes | Required area in square meters |
 | `requested_delivery_date` | string (ISO) | Yes | Delivery date in ISO format (YYYY-MM-DD) |
-| `file_url` | string (URL) | No | URL to the tag sheet file |
+| `file_url` | string (URL) | No³ | URL to the tag sheet file |
+| `file_content` | string (base64) | No³ | Base64-encoded file content (alternative to file_url) |
 | `original_file_name` | string | No | Original filename for display |
 | `uploaded_by` | string (email) | Yes | User who uploaded the tag |
 | `tag_name` | string | No | Display name for the tag |
+| `received_through` | string | No | How the tag was received: `Email`, `Whatsapp`, or `API` (default) |
+| `user_remarks` | string | No | User-entered remarks (separate from system traces) |
 | `metadata` | object | No | Additional metadata (free-form) |
+
+> ³ Either `file_url` or `file_content` can be provided for file hash calculation and attachment
 
 > ¹ Recommended to provide for idempotency guarantees
 > ² At least one LPO reference field is required

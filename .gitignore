@@ -14,7 +14,7 @@ env/
 .venv/
 
 # IDE
-.vscode/
+
 .idea/
 *.swp
 *.swo
@@ -28,12 +28,16 @@ env/
 smartsheet_workspace_metadata.json
 workspace_created_*.json
 workspaces_list.json
+workspace_manifest.json
 task.md
 
 # Azure Functions
 functions/local.settings.json
 .python_packages/
 
+# Test coverage
+.coverage
+htmlcov/
 
 # Logs
 *.log
@@ -45,6 +49,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+*.txt
 
 # Test artifacts
 test_result.txt
@@ -52,3 +57,7 @@ test_results_full.log
 
 #Agents
 /.agent
+
+#VSCode
+.vscode
+

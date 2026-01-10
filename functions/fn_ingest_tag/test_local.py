@@ -18,7 +18,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file_
 
 def test_tag_ingest():
     """Test the tag ingestion flow."""
-    from shared import get_smartsheet_client, generate_trace_id
+    from shared import get_smartsheet_client, generate_trace_id, Sheet, Column
     
     print("=" * 60)
     print("Testing Tag Ingestion Function")
@@ -37,12 +37,12 @@ def test_tag_ingest():
     print("\n2. Testing LPO lookup...")
     try:
         # Try to find an existing LPO
-        lpo = client.find_row_by_column("01 LPO Master LOG", "LPO Status", "Active")
+        lpo = client.find_row(Sheet.LPO_MASTER, Column.LPO_MASTER.LPO_STATUS, "Active")
         if lpo:
-            print(f"   ✓ Found LPO: {lpo.get('Customer LPO Ref')}")
-            print(f"     - SAP Ref: {lpo.get('SAP Reference')}")
-            print(f"     - Status: {lpo.get('LPO Status')}")
-            print(f"     - PO Qty: {lpo.get('PO Quantity (Sqm)')}")
+            print(f"   ✓ Found LPO: {lpo.get(Column.LPO_MASTER.CUSTOMER_LPO_REF)}")
+            print(f"     - SAP Ref: {lpo.get(Column.LPO_MASTER.SAP_REFERENCE)}")
+            print(f"     - Status: {lpo.get(Column.LPO_MASTER.LPO_STATUS)}")
+            print(f"     - PO Qty: {lpo.get(Column.LPO_MASTER.PO_QUANTITY_SQM)}")
         else:
             print("   ⚠ No active LPO found (expected for empty dev)")
     except Exception as e:
@@ -52,9 +52,15 @@ def test_tag_ingest():
     print("\n3. Testing idempotency check...")
     try:
         test_request_id = "test-request-12345"
-        existing = client.get_tag_by_client_request_id(test_request_id)
+        existing = client.find_row(
+            Sheet.TAG_REGISTRY, 
+            Column.TAG_REGISTRY.CLIENT_REQUEST_ID, 
+            test_request_id
+        )
         if existing:
-            print(f"   → Found existing: {existing.get('Tag Sheet Name/ Rev')}")
+            # Try to get tag name using logical name, then physical name fallback if needed by accessing dict
+            tag_name = existing.get(Column.TAG_REGISTRY.TAG_NAME)
+            print(f"   → Found existing: {tag_name}")
         else:
             print("   ✓ No duplicate found (correct)")
     except Exception as e:

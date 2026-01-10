@@ -43,6 +43,20 @@ def compute_file_hash_from_url(file_url: str, auth_headers: Optional[Dict[str, s
         return None
 
 
+def compute_file_hash_from_base64(file_content_base64: str) -> Optional[str]:
+    """
+    Compute hash from base64 encoded file content.
+    Returns None if decoding fails.
+    """
+    import base64
+    try:
+        file_bytes = base64.b64decode(file_content_base64)
+        return compute_file_hash(file_bytes)
+    except Exception as e:
+        logger.error(f"Failed to decode base64 content for hashing: {e}")
+        return None
+
+
 def calculate_sla_due(severity: ExceptionSeverity, created_at: Optional[datetime] = None) -> datetime:
     """
     Calculate SLA due date based on severity.

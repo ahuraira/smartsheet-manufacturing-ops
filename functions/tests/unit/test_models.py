@@ -160,6 +160,63 @@ class TestTagIngestRequest:
             uploaded_by="user@test.com"
         )
         assert request.required_area_m2 == -100.0
+    
+    @pytest.mark.unit
+    def test_file_content_field_v110(self):
+        """Test file_content field added in v1.1.0 for base64 support."""
+        import base64
+        file_data = base64.b64encode(b"test file content").decode()
+        request = TagIngestRequest(
+            required_area_m2=50.0,
+            requested_delivery_date="2026-02-01",
+            uploaded_by="user@test.com",
+            file_content=file_data
+        )
+        assert request.file_content == file_data
+        assert request.file_url is None  # Either file_url OR file_content
+    
+    @pytest.mark.unit
+    def test_received_through_default_v110(self):
+        """Test received_through defaults to 'API' as per v1.1.0."""
+        request = TagIngestRequest(
+            required_area_m2=50.0,
+            requested_delivery_date="2026-02-01",
+            uploaded_by="user@test.com"
+        )
+        assert request.received_through == "API"
+    
+    @pytest.mark.unit
+    def test_received_through_values_v110(self):
+        """Test received_through field accepts all valid values."""
+        for value in ["Email", "Whatsapp", "API"]:
+            request = TagIngestRequest(
+                required_area_m2=50.0,
+                requested_delivery_date="2026-02-01",
+                uploaded_by="user@test.com",
+                received_through=value
+            )
+            assert request.received_through == value
+    
+    @pytest.mark.unit
+    def test_user_remarks_field_v110(self):
+        """Test user_remarks field added in v1.1.0."""
+        request = TagIngestRequest(
+            required_area_m2=50.0,
+            requested_delivery_date="2026-02-01",
+            uploaded_by="user@test.com",
+            user_remarks="This is urgent, please prioritize"
+        )
+        assert request.user_remarks == "This is urgent, please prioritize"
+    
+    @pytest.mark.unit
+    def test_user_remarks_default_none(self):
+        """Test user_remarks defaults to None."""
+        request = TagIngestRequest(
+            required_area_m2=50.0,
+            requested_delivery_date="2026-02-01",
+            uploaded_by="user@test.com"
+        )
+        assert request.user_remarks is None
 
 
 class TestTagIngestResponse:

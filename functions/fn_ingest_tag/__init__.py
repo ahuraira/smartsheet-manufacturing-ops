@@ -107,16 +107,30 @@ from shared import (
     ActionType,
     # Client
     get_smartsheet_client,
+    # Manifest (for column name resolution)
+    get_manifest,
     # ID generation (sequence-based)
     generate_next_tag_id,
     generate_next_exception_id,
     # Helpers
     generate_trace_id,
     compute_file_hash_from_url,
+    compute_file_hash_from_base64,
     calculate_sla_due,
     format_datetime_for_smartsheet,
     parse_float_safe,
 )
+
+# Get manifest for column name resolution
+_manifest = None
+
+def _get_physical_column_name(sheet_logical: str, column_logical: str) -> str:
+    """Get physical column name from manifest."""
+    global _manifest
+    if _manifest is None:
+        _manifest = get_manifest()
+    physical_name = _manifest.get_column_name(sheet_logical, column_logical)
+    return physical_name or column_logical  # Fallback to logical if not found
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +167,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         client = get_smartsheet_client()
         
         # 2. Idempotency check
-        # 2. Idempotency check
         existing = client.find_row(
             Sheet.TAG_REGISTRY,
             Column.TAG_REGISTRY.CLIENT_REQUEST_ID,
@@ -164,7 +177,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             return func.HttpResponse(
                 json.dumps({
                     "status": "ALREADY_PROCESSED",
-                    "status": "ALREADY_PROCESSED",
                     "tag_id": existing.get(Column.TAG_REGISTRY.TAG_NAME) or existing.get(Column.TAG_REGISTRY.TAG_ID),
                     "trace_id": trace_id,
                     "message": "This request was already processed"
@@ -173,47 +185,49 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
-        # 3. File hash check (if file URL provided)
+        # 3. File hash check (if file URL or content provided)
         file_hash = None
         if request.file_url:
             file_hash = compute_file_hash_from_url(request.file_url)
-            if file_hash:
-                existing_by_hash = client.find_row(
-                    Sheet.TAG_REGISTRY,
-                    Column.TAG_REGISTRY.FILE_HASH,
-                    file_hash
+        elif request.file_content:
+            file_hash = compute_file_hash_from_base64(request.file_content)
+        
+        if file_hash:
+            existing_by_hash = client.find_row(
+                Sheet.TAG_REGISTRY,
+                Column.TAG_REGISTRY.FILE_HASH,
+                file_hash
+            )
+            if existing_by_hash:
+                logger.warning(f"[{trace_id}] Duplicate file hash detected")
+                exception_id = _create_exception(
+                    client=client,
+                    trace_id=trace_id,
+                    reason_code=ReasonCode.DUPLICATE_UPLOAD,
+                    severity=ExceptionSeverity.MEDIUM,
+                    related_tag_id=existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME),
+                    message=f"Duplicate file upload. Existing tag: {existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME)}"
                 )
-                if existing_by_hash:
-                    logger.warning(f"[{trace_id}] Duplicate file hash detected")
-                    exception_id = _create_exception(
-                        client=client,
-                        trace_id=trace_id,
-                        reason_code=ReasonCode.DUPLICATE_UPLOAD,
-                        severity=ExceptionSeverity.MEDIUM,
-                        related_tag_id=existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME),
-                        message=f"Duplicate file upload. Existing tag: {existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME)}"
-                    )
-                    _log_user_action(
-                        client=client,
-                        user_id=request.uploaded_by,
-                        action_type=ActionType.OPERATION_FAILED,
-                        target_table=Sheet.TAG_REGISTRY,
-                        target_id="N/A",
-                        notes=f"Duplicate file upload rejected. Exception: {exception_id}",
-                        trace_id=trace_id
-                    )
-                    return func.HttpResponse(
-                        json.dumps({
-                            "status": "DUPLICATE",
-                            "status": "DUPLICATE",
-                            "existing_tag_id": existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME) or existing_by_hash.get(Column.TAG_REGISTRY.TAG_ID),
-                            "exception_id": exception_id,
-                            "trace_id": trace_id,
-                            "message": "This file has already been uploaded"
-                        }),
-                        status_code=409,
-                        mimetype="application/json"
-                    )
+                _log_user_action(
+                    client=client,
+                    user_id=request.uploaded_by,
+                    action_type=ActionType.OPERATION_FAILED,
+                    target_table=Sheet.TAG_REGISTRY,
+                    target_id="N/A",
+                    notes=f"Duplicate file upload rejected. Exception: {exception_id}",
+                    trace_id=trace_id
+                )
+                return func.HttpResponse(
+                    json.dumps({
+                        "status": "DUPLICATE",
+                        "existing_tag_id": existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME) or existing_by_hash.get(Column.TAG_REGISTRY.TAG_ID),
+                        "exception_id": exception_id,
+                        "trace_id": trace_id,
+                        "message": "This file has already been uploaded"
+                    }),
+                    status_code=409,
+                    mimetype="application/json"
+                )
         
         # 4. LPO validation
         lpo = _find_lpo(client, request)
@@ -226,6 +240,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 severity=ExceptionSeverity.HIGH,
                 message=f"LPO not found: {request.lpo_sap_reference or request.customer_lpo_ref or request.lpo_id}"
             )
+            _log_user_action(
+                client=client,
+                user_id=request.uploaded_by,
+                action_type=ActionType.OPERATION_FAILED,
+                target_table=Sheet.TAG_REGISTRY,
+                target_id="N/A",
+                notes=f"LPO not found. Exception: {exception_id}",
+                trace_id=trace_id
+            )
             return func.HttpResponse(
                 json.dumps({
                     "status": "BLOCKED",
@@ -237,15 +260,28 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
-        # Check LPO status
-        lpo_status = lpo.get(Column.LPO_MASTER.LPO_STATUS)
+        # Check LPO status - use physical column name
+        lpo_status_col = _get_physical_column_name("LPO_MASTER", "LPO_STATUS")
+        customer_lpo_ref_col = _get_physical_column_name("LPO_MASTER", "CUSTOMER_LPO_REF")
+        lpo_status = lpo.get(lpo_status_col)
+        
         if lpo_status == LPOStatus.ON_HOLD.value:
             logger.warning(f"[{trace_id}] LPO is on hold")
             exception_id = _create_exception(
+                client=client,
                 trace_id=trace_id,
                 reason_code=ReasonCode.LPO_ON_HOLD,
                 severity=ExceptionSeverity.HIGH,
-                message=f"LPO {lpo.get(Column.LPO_MASTER.CUSTOMER_LPO_REF)} is currently on hold"
+                message=f"LPO {lpo.get(customer_lpo_ref_col)} is currently on hold"
+            )
+            _log_user_action(
+                client=client,
+                user_id=request.uploaded_by,
+                action_type=ActionType.OPERATION_FAILED,
+                target_table=Sheet.TAG_REGISTRY,
+                target_id="N/A",
+                notes=f"LPO on hold. Exception: {exception_id}",
+                trace_id=trace_id
             )
             return func.HttpResponse(
                 json.dumps({
@@ -258,9 +294,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
-        # Check PO balance
-        po_quantity = parse_float_safe(lpo.get(Column.LPO_MASTER.PO_QUANTITY_SQM))
-        delivered_qty = parse_float_safe(lpo.get(Column.LPO_MASTER.DELIVERED_QUANTITY_SQM))
+        # Check PO balance - use physical column names from manifest
+        po_qty_col = _get_physical_column_name("LPO_MASTER", "PO_QUANTITY_SQM")
+        delivered_qty_col = _get_physical_column_name("LPO_MASTER", "DELIVERED_QUANTITY_SQM")
+        
+        po_quantity = parse_float_safe(lpo.get(po_qty_col))
+        delivered_qty = parse_float_safe(lpo.get(delivered_qty_col))
+        
+        logger.info(f"[{trace_id}] PO balance check: po_qty={po_quantity}, delivered={delivered_qty}")
+        
         # TODO: Sum active allocations for accurate committed calculation
         committed = delivered_qty
         remaining = po_quantity - committed
@@ -274,6 +316,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 severity=ExceptionSeverity.HIGH,
                 quantity=request.required_area_m2,
                 message=f"Required: {request.required_area_m2} m², Available: {remaining} m²"
+            )
+            _log_user_action(
+                client=client,
+                user_id=request.uploaded_by,
+                action_type=ActionType.OPERATION_FAILED,
+                target_table=Sheet.TAG_REGISTRY,
+                target_id="N/A",
+                notes=f"Insufficient PO balance. Exception: {exception_id}",
+                trace_id=trace_id
             )
             return func.HttpResponse(
                 json.dumps({
@@ -290,25 +341,80 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         tag_id = request.tag_id or generate_next_tag_id(client)
         logger.info(f"[{trace_id}] Generated tag_id: {tag_id}")
         
-        # 6. Create tag record
+        # 6. Create tag record - get physical column names for LPO data
+        sap_ref_col = _get_physical_column_name("LPO_MASTER", "SAP_REFERENCE")
+        customer_name_col = _get_physical_column_name("LPO_MASTER", "CUSTOMER_NAME")
+        brand_col = _get_physical_column_name("LPO_MASTER", "BRAND")
+        project_col = _get_physical_column_name("LPO_MASTER", "PROJECT_NAME")
+        wastage_col = _get_physical_column_name("LPO_MASTER", "WASTAGE_CONSIDERED_IN_COSTING")
+        lpo_status_from_lpo = lpo.get(lpo_status_col)
+        
         tag_name = request.tag_name or request.original_file_name or tag_id
+        
+        # Build complete tag data with all required fields
         tag_data = {
+            # Core identification
+            Column.TAG_REGISTRY.TAG_ID: tag_id,  # Save tag_id in proper column!
             Column.TAG_REGISTRY.TAG_NAME: tag_name,
-            Column.TAG_REGISTRY.LPO_SAP_REFERENCE: lpo.get(Column.LPO_MASTER.SAP_REFERENCE) or lpo.get(Column.LPO_MASTER.CUSTOMER_LPO_REF),
+            Column.TAG_REGISTRY.CLIENT_REQUEST_ID: request.client_request_id,
+            
+            # Reception info
+            Column.TAG_REGISTRY.DATE_TAG_SHEET_RECEIVED: format_datetime_for_smartsheet(datetime.now()),
+            Column.TAG_REGISTRY.RECEIVED_THROUGH: request.received_through,
+            Column.TAG_REGISTRY.SUBMITTED_BY: request.uploaded_by,
+            
+            # LPO link and copied data
+            Column.TAG_REGISTRY.LPO_SAP_REFERENCE: lpo.get(sap_ref_col) or lpo.get(customer_lpo_ref_col),
+            Column.TAG_REGISTRY.LPO_STATUS: lpo_status_from_lpo,
+            Column.TAG_REGISTRY.CUSTOMER_NAME: lpo.get(customer_name_col),
+            Column.TAG_REGISTRY.PROJECT: lpo.get(project_col),
+            Column.TAG_REGISTRY.BRAND: lpo.get(brand_col),
+            Column.TAG_REGISTRY.LPO_ALLOWABLE_WASTAGE: lpo.get(wastage_col),
+            
+            # Quantity and dates
             Column.TAG_REGISTRY.REQUIRED_DELIVERY_DATE: request.requested_delivery_date,
             Column.TAG_REGISTRY.ESTIMATED_QUANTITY: request.required_area_m2,
-            Column.TAG_REGISTRY.STATUS: TagStatus.DRAFT.value,
-            Column.TAG_REGISTRY.CUSTOMER_NAME: lpo.get(Column.LPO_MASTER.CUSTOMER_NAME),
-            Column.TAG_REGISTRY.BRAND: lpo.get(Column.LPO_MASTER.BRAND),
+            
+            # Status and workflow
+            Column.TAG_REGISTRY.STATUS: "Validate",  # Starts at Validate, not Draft
+            Column.TAG_REGISTRY.PRODUCTION_GATE: "Green",  # Default to Green
+            
+            # File tracking
             Column.TAG_REGISTRY.FILE_HASH: file_hash,
-            Column.TAG_REGISTRY.CLIENT_REQUEST_ID: request.client_request_id,
-            Column.TAG_REGISTRY.SUBMITTED_BY: request.uploaded_by,
-            Column.TAG_REGISTRY.REMARKS: f"ID: {tag_id} | Trace: {trace_id}"
+            
+            # Remarks - user input separate from system notes
+            Column.TAG_REGISTRY.REMARKS: request.user_remarks or f"Trace: {trace_id}",
         }
         
         created_row = client.add_row(Sheet.TAG_REGISTRY, tag_data)
+        row_id = created_row.get("id")
         
-        logger.info(f"[{trace_id}] Tag created successfully: {tag_id}")
+        logger.info(f"[{trace_id}] Tag created successfully: {tag_id}, row_id: {row_id}")
+        
+        # 6b. Attach file to the row
+        attachment_info = None
+        if row_id:
+            try:
+                if request.file_url:
+                    # Attach URL directly
+                    attachment_info = client.attach_url_to_row(
+                        Sheet.TAG_REGISTRY,
+                        row_id,
+                        request.file_url,
+                        request.original_file_name or f"attachment_{tag_id}"
+                    )
+                    logger.info(f"[{trace_id}] File URL attached to tag: {attachment_info}")
+                elif request.file_content:
+                    # Attach base64 content as file
+                    attachment_info = client.attach_file_to_row(
+                        Sheet.TAG_REGISTRY,
+                        row_id,
+                        request.file_content,
+                        request.original_file_name or f"attachment_{tag_id}.pdf"
+                    )
+                    logger.info(f"[{trace_id}] File content attached to tag: {attachment_info}")
+            except Exception as attach_error:
+                logger.warning(f"[{trace_id}] Failed to attach file: {attach_error}")
         
         # 7. Log user action
         _log_user_action(
@@ -474,7 +580,6 @@ def _log_user_action(
         Column.USER_ACTION_LOG.NEW_VALUE: new_value,
         Column.USER_ACTION_LOG.NOTES: notes or f"Trace: {trace_id}",
     }
-    
     
     try:
         client.add_row(Sheet.USER_ACTION_LOG, action_data)

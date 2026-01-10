@@ -243,6 +243,15 @@ class SmartsheetClient:
             params=params,
             timeout=30
         )
+        
+        # Log detailed error info before raising
+        if not response.ok:
+            try:
+                error_body = response.json()
+                logger.error(f"Smartsheet API error: {response.status_code} - {error_body}")
+            except Exception:
+                logger.error(f"Smartsheet API error: {response.status_code} - {response.text[:500]}")
+        
         response.raise_for_status()
         return response
     
@@ -626,6 +635,109 @@ class SmartsheetClient:
             val = row.get("CONFIG_VALUE") or row.get("config_value")
             return val
         return None
+    
+    @retry_with_backoff(max_retries=3)
+    def attach_url_to_row(
+        self,
+        sheet_ref: Union[str, int],
+        row_id: int,
+        url: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Attach a URL to a row in a sheet.
+        
+        Args:
+            sheet_ref: Sheet reference (logical name, physical name, or ID)
+            row_id: Row ID to attach to
+            url: URL to attach
+            name: Optional name for the attachment
+            description: Optional description
+        
+        Returns:
+            Attachment info from Smartsheet API
+        """
+        sheet_id = self.resolve_sheet_id(sheet_ref)
+        
+        api_url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}/attachments"
+        payload = {
+            "attachmentType": "LINK",
+            "url": url,
+            "name": name or url.split("/")[-1][:100]  # Use last part of URL, max 100 chars
+        }
+        if description:
+            payload["description"] = description
+        
+        response = self._make_request("POST", api_url, json=payload)
+        result = response.json()
+        
+        logger.info(f"Attached URL to row {row_id} in sheet {sheet_id}")
+        return result.get("result", {})
+    
+    @retry_with_backoff(max_retries=3)
+    def attach_file_to_row(
+        self,
+        sheet_ref: Union[str, int],
+        row_id: int,
+        file_content_base64: str,
+        file_name: str,
+        content_type: str = "application/octet-stream"
+    ) -> Dict[str, Any]:
+        """
+        Attach a file (from base64 content) to a row in a sheet.
+        
+        Args:
+            sheet_ref: Sheet reference (logical name, physical name, or ID)
+            row_id: Row ID to attach to
+            file_content_base64: Base64 encoded file content
+            file_name: Name for the attachment file
+            content_type: MIME type of the file
+        
+        Returns:
+            Attachment info from Smartsheet API
+        """
+        import base64
+        
+        sheet_id = self.resolve_sheet_id(sheet_ref)
+        
+        # Decode base64 content
+        try:
+            file_bytes = base64.b64decode(file_content_base64)
+        except Exception as e:
+            raise ValueError(f"Invalid base64 content: {e}")
+        
+        api_url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}/attachments"
+        
+        # For file uploads, we need to use multipart form data
+        # Temporarily remove JSON content-type for multipart
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Disposition": f'attachment; filename="{file_name}"',
+            "Content-Type": content_type
+        }
+        
+        self._rate_limiter.wait()
+        
+        response = requests.post(
+            api_url,
+            headers=headers,
+            data=file_bytes,
+            timeout=60  # Longer timeout for file uploads
+        )
+        
+        if not response.ok:
+            try:
+                error_body = response.json()
+                logger.error(f"Smartsheet API error: {response.status_code} - {error_body}")
+            except Exception:
+                logger.error(f"Smartsheet API error: {response.status_code} - {response.text[:500]}")
+        
+        response.raise_for_status()
+        result = response.json()
+        
+        logger.info(f"Attached file '{file_name}' to row {row_id} in sheet {sheet_id}")
+        return result.get("result", {})
     
     def refresh_caches(self):
         """Clear all caches and force reload."""

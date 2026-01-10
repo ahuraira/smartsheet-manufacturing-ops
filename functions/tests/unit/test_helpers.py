@@ -3,14 +3,17 @@ Unit Tests for Helper Utilities
 
 Tests all helper functions for:
 - Trace ID generation
-- File hash computation
+- File hash computation (bytes, URL, and base64)
 - SLA calculation
 - Datetime formatting
 - Safe parsing utilities
+
+Updated for v1.1.0 with base64 file content support.
 """
 
 import pytest
 import hashlib
+import base64
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
@@ -22,6 +25,7 @@ from shared.helpers import (
     generate_trace_id,
     compute_file_hash,
     compute_file_hash_from_url,
+    compute_file_hash_from_base64,
     calculate_sla_due,
     format_datetime_for_smartsheet,
     parse_float_safe,
@@ -137,6 +141,63 @@ class TestComputeFileHashFromUrl:
             mock_get.assert_called_once()
             call_kwargs = mock_get.call_args[1]
             assert call_kwargs["headers"] == auth_headers
+
+
+class TestComputeFileHashFromBase64:
+    """Tests for computing file hash from base64 content (v1.1.0 feature)."""
+    
+    @pytest.mark.unit
+    def test_valid_base64_hash(self):
+        """Test successful hash computation from base64."""
+        content = b"test file content for base64"
+        b64_content = base64.b64encode(content).decode()
+        
+        result = compute_file_hash_from_base64(b64_content)
+        expected = hashlib.sha256(content).hexdigest()
+        
+        assert result == expected
+    
+    @pytest.mark.unit
+    def test_empty_base64(self):
+        """Test hash of empty base64 content."""
+        content = b""
+        b64_content = base64.b64encode(content).decode()
+        
+        result = compute_file_hash_from_base64(b64_content)
+        expected = hashlib.sha256(content).hexdigest()
+        
+        assert result == expected
+    
+    @pytest.mark.unit
+    def test_invalid_base64_returns_none(self):
+        """Test that invalid base64 returns None."""
+        result = compute_file_hash_from_base64("not-valid-base64!!!")
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_same_content_same_hash(self):
+        """Test that same content produces same hash regardless of encoding method."""
+        content = b"identical content"
+        b64_content = base64.b64encode(content).decode()
+        
+        # Hash from base64
+        hash_b64 = compute_file_hash_from_base64(b64_content)
+        # Hash from bytes directly
+        hash_bytes = compute_file_hash(content)
+        
+        assert hash_b64 == hash_bytes
+    
+    @pytest.mark.unit
+    def test_pdf_like_content(self):
+        """Test with PDF-like binary content."""
+        # Simulate PDF header
+        content = b"%PDF-1.4 binary content here with special bytes \x00\x01\x02"
+        b64_content = base64.b64encode(content).decode()
+        
+        result = compute_file_hash_from_base64(b64_content)
+        
+        assert result is not None
+        assert len(result) == 64  # SHA256 hex length
 
 
 class TestCalculateSlaDue:

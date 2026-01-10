@@ -18,6 +18,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-01-09
+
+### Added
+
+#### Tag Ingestion Enhancements (`fn_ingest_tag`)
+- **Base64 file content support** - Can now pass file content directly as base64 instead of URL
+  - New `file_content` field in request
+  - New `compute_file_hash_from_base64()` helper
+  - New `attach_file_to_row()` method in SmartsheetClient
+- **Complete Tag Registry field population**:
+  - `TAG_ID` - Now properly saves in the Tag ID column
+  - `DATE_TAG_SHEET_RECEIVED` - Automatically set to current timestamp
+  - `RECEIVED_THROUGH` - Email, Whatsapp, or API (from request)
+  - `PROJECT` - Copied from LPO's Project Name
+  - `LPO_ALLOWABLE_WASTAGE` - Copied from LPO's Wastage setting
+  - `PRODUCTION_GATE` - Defaults to "Green"
+  - `STATUS` - Now starts at "Validate" instead of "Draft"
+- **User remarks field** - Separate `user_remarks` field for user input (not mixed with system traces)
+
+#### New Request Fields
+```json
+{
+  "file_content": "base64...",     // Alternative to file_url
+  "received_through": "Email",     // Email, Whatsapp, API
+  "user_remarks": "User notes"     // Separate from system remarks
+}
+```
+
+### Fixed
+- **PO Quantity calculation** - Now correctly reads physical column names from manifest
+  - Was returning 0 because it used logical names to read row data
+  - Added `_get_physical_column_name()` helper function
+- **Column name resolution** - All LPO data access now uses physical names via manifest lookup
+- **Indentation issues** in file hash duplicate check logic
+- **Removed duplicate JSON key** in ALREADY_PROCESSED response
+- **Missing user action logs** - All BLOCKED scenarios now log user actions (LPO_NOT_FOUND, LPO_ON_HOLD, INSUFFICIENT_PO_BALANCE)
+- **Code cleanup** - Removed duplicate comments and extra blank lines
+
+### Changed
+- **Tag status** now starts at "Validate" instead of "Draft"
+- **Remarks column** now contains user input only, system trace moved internally
+- **SmartsheetClient** - Enhanced error logging to show full API error messages
+
+### Technical
+- Added `WASTAGE_CONSIDERED_IN_COSTING` to `Column.LPO_MASTER`
+- Extended `Column.TAG_REGISTRY` with all columns:
+  - `DATE_TAG_SHEET_RECEIVED`, `RECEIVED_THROUGH`, `PROJECT`, `LOCATION`
+  - `LPO_ALLOWABLE_WASTAGE`, `PRODUCTION_GATE`, `SHEETS_USED`, `WASTAGE_NESTED`
+  - `PLANNED_CUT_DATE`, `ALLOCATION_BATCH_ID`
+- Added `compute_file_hash_from_base64` export to shared module
+
+---
+
 ## [1.0.0] - 2026-01-08
 
 ### Added
@@ -109,12 +162,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 1.1.0 | 2026-01-09 | Base64 file support, complete Tag Registry fields, PO balance fix |
 | 1.0.0 | 2026-01-08 | Full tag ingestion, test suite, documentation |
 | 0.1.0 | 2026-01-05 | Initial setup |
 
 ---
 
 ## Upgrade Notes
+
+### Upgrading to 1.1.0
+
+If upgrading from 1.0.0:
+
+1. **New request fields available** (optional):
+   - `file_content` - Base64 file content (alternative to `file_url`)
+   - `received_through` - Reception channel (Email/Whatsapp/API)
+   - `user_remarks` - User-entered remarks
+
+2. **Status behavior change**:
+   - Tags processed by `fn_ingest_tag` now receive `Validate` status
+   - This indicates the tag passed validation and is ready for nesting
+
+3. **No breaking changes** - All existing integrations continue to work.
 
 ### Upgrading to 1.0.0
 

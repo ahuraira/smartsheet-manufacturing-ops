@@ -141,10 +141,20 @@ class TagIngestRequest(BaseModel):
     lpo_sap_reference: Optional[str] = None  # Another fallback
     required_area_m2: float
     requested_delivery_date: str  # ISO format date
+    
+    # File handling - either URL or base64 content
     file_url: Optional[str] = None
+    file_content: Optional[str] = None  # Base64 encoded file content
     original_file_name: Optional[str] = None
+    
+    # User info
     uploaded_by: str
     tag_name: Optional[str] = None
+    
+    # Reception info
+    received_through: str = "API"  # Email, Whatsapp, API
+    user_remarks: Optional[str] = None  # User-entered remarks
+    
     metadata: Optional[Dict[str, Any]] = None
 
 

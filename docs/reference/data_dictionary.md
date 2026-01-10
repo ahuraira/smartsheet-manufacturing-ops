@@ -101,7 +101,7 @@ Status values for tag sheet records.
 ```python
 class TagStatus(str, Enum):
     DRAFT = "Draft"
-    VALIDATE = "Validate"
+    VALIDATE = "Validate"  # Default for new tags (v1.1.0+)
     SENT_TO_NESTING = "Sent to Nesting"
     NESTING_COMPLETE = "Nesting Complete"
     PLANNED_QUEUED = "Planned Queued"
@@ -115,6 +115,8 @@ class TagStatus(str, Enum):
     CANCELLED = "Cancelled"
     BLOCKED = "BLOCKED"
 ```
+
+> **Note (v1.1.0):** Smartsheet forms default to `Draft`. When processed by `fn_ingest_tag`, the status is set to `Validate` indicating the tag has passed validation and is ready for nesting.
 
 ### LPOStatus
 
@@ -209,10 +211,20 @@ class TagIngestRequest(BaseModel):
     lpo_sap_reference: Optional[str] = None
     required_area_m2: float
     requested_delivery_date: str  # ISO format
+    
+    # File handling - either URL or base64 content
     file_url: Optional[str] = None
+    file_content: Optional[str] = None  # Base64 encoded file content
     original_file_name: Optional[str] = None
+    
+    # User info
     uploaded_by: str
     tag_name: Optional[str] = None
+    
+    # Reception info (v1.1.0)
+    received_through: str = "API"  # Email, Whatsapp, API
+    user_remarks: Optional[str] = None  # User-entered remarks
+    
     metadata: Optional[Dict[str, Any]] = None
 ```
 
@@ -226,9 +238,12 @@ class TagIngestRequest(BaseModel):
 | `required_area_m2` | float | Yes | Required area |
 | `requested_delivery_date` | ISO date | Yes | Delivery date |
 | `file_url` | URL | No | Tag sheet file URL |
+| `file_content` | string | No | Base64 encoded file content |
 | `original_file_name` | string | No | Original filename |
 | `uploaded_by` | email | Yes | Uploader email |
 | `tag_name` | string | No | Display name |
+| `received_through` | string | No | Reception channel (Email/Whatsapp/API) |
+| `user_remarks` | string | No | User-entered remarks |
 | `metadata` | object | No | Additional data |
 
 ### TagIngestResponse
@@ -318,7 +333,7 @@ class TagRecord(BaseModel):
     lpo_sap_reference: Optional[str] = None
     required_delivery_date: Optional[str] = None
     estimated_quantity: Optional[float] = None
-    status: TagStatus = TagStatus.DRAFT
+    status: TagStatus = TagStatus.VALIDATE  # v1.1.0: starts at Validate
     file_hash: Optional[str] = None
     client_request_id: Optional[str] = None
     submitted_by: Optional[str] = None
