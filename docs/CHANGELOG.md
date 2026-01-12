@@ -248,6 +248,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Upgrade Notes
 
+### Upgrading to 1.2.0
+
+If upgrading from 1.1.0:
+
+1. **New endpoints available**:
+   - `POST /api/lpos/ingest` - Create LPO
+   - `PUT /api/lpos/update` - Update LPO
+
+2. **New shared audit module** (`shared/audit.py`):
+   - `create_exception()` and `log_user_action()` now available as reusable utilities
+   - If you have custom functions, consider using these for consistency
+
+3. **Updated conftest.py**:
+   - Mock manifest now includes 11 new LPO_MASTER columns
+   - Update your test fixtures if testing LPO-related functionality
+
+4. **No breaking changes** - All existing integrations continue to work.
+
 ### Upgrading to 1.1.0
 
 If upgrading from 1.0.0:

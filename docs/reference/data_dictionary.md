@@ -160,6 +160,12 @@ class ReasonCode(str, Enum):
     LPO_ON_HOLD = "LPO_ON_HOLD"
     INSUFFICIENT_PO_BALANCE = "INSUFFICIENT_PO_BALANCE"
     PARSE_FAILED = "PARSE_FAILED"
+    # LPO-specific reason codes (v1.2.0)
+    DUPLICATE_SAP_REF = "DUPLICATE_SAP_REF"
+    SAP_REF_NOT_FOUND = "SAP_REF_NOT_FOUND"
+    LPO_INVALID_DATA = "LPO_INVALID_DATA"
+    PO_QUANTITY_CONFLICT = "PO_QUANTITY_CONFLICT"
+    DUPLICATE_LPO_FILE = "DUPLICATE_LPO_FILE"
 ```
 
 ### ActionType
@@ -172,6 +178,8 @@ class ActionType(str, Enum):
     TAG_CREATED = "TAG_CREATED"
     TAG_UPDATED = "TAG_UPDATED"
     TAG_RELEASED = "TAG_RELEASED"
+    LPO_CREATED = "LPO_CREATED"  # v1.2.0
+    LPO_UPDATED = "LPO_UPDATED"  # v1.2.0
     ALLOCATION_CREATED = "ALLOCATION_CREATED"
     CONSUMPTION_SUBMITTED = "CONSUMPTION_SUBMITTED"
     DO_CREATED = "DO_CREATED"
@@ -255,6 +263,108 @@ class TagIngestResponse(BaseModel):
     status: str  # UPLOADED, DUPLICATE, BLOCKED
     tag_id: Optional[str] = None
     file_hash: Optional[str] = None
+    trace_id: str
+    message: Optional[str] = None
+    exception_id: Optional[str] = None
+```
+
+### Brand (v1.2.0)
+
+Valid brand values.
+
+```python
+class Brand(str, Enum):
+    KIMMCO = "KIMMCO"
+    WTI = "WTI"
+```
+
+### TermsOfPayment (v1.2.0)
+
+Valid payment terms.
+
+```python
+class TermsOfPayment(str, Enum):
+    DAYS_30 = "30 Days Credit"
+    DAYS_60 = "60 Days Credit"
+    DAYS_90 = "90 Days Credit"
+    IMMEDIATE = "Immediate Payment"
+```
+
+### FileType (v1.2.0)
+
+File types for LPO attachments.
+
+```python
+class FileType(str, Enum):
+    LPO = "lpo"             # Original purchase order document
+    COSTING = "costing"     # Costing/pricing sheet
+    AMENDMENT = "amendment" # PO amendments/revisions
+    OTHER = "other"         # Any other document type
+```
+
+### FileAttachment (v1.2.0)
+
+Single file attachment for LPO.
+
+```python
+class FileAttachment(BaseModel):
+    file_type: FileType = FileType.OTHER
+    file_url: Optional[str] = None
+    file_content: Optional[str] = None  # Base64 encoded
+    file_name: Optional[str] = None
+```
+
+> **Note:** Either `file_url` or `file_content` is required per attachment.
+
+### LPOIngestRequest (v1.2.0)
+
+Request payload for LPO ingestion API.
+
+```python
+class LPOIngestRequest(BaseModel):
+    client_request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    
+    # Required fields
+    sap_reference: str  # External ID (e.g., PTE-185)
+    customer_name: str
+    project_name: str
+    brand: str  # KIMMCO or WTI
+    po_quantity_sqm: float = Field(gt=0)
+    price_per_sqm: float = Field(gt=0)
+    
+    # Optional fields
+    customer_lpo_ref: Optional[str] = None
+    terms_of_payment: str = "30 Days Credit"
+    wastage_pct: float = Field(default=0.0, ge=0, le=20)
+    remarks: Optional[str] = None
+    
+    # File attachments (multi-file support)
+    files: List[FileAttachment] = Field(default_factory=list)
+    
+    # User info
+    uploaded_by: str
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sap_reference` | string | Yes | External SAP reference (unique) |
+| `customer_name` | string | Yes | Customer name |
+| `project_name` | string | Yes | Project name |
+| `brand` | string | Yes | KIMMCO or WTI |
+| `po_quantity_sqm` | float | Yes | PO quantity (> 0) |
+| `price_per_sqm` | float | Yes | Price per sqm (> 0) |
+| `files` | List[FileAttachment] | No | Multi-file attachments |
+| `uploaded_by` | string | Yes | User email |
+
+### LPOIngestResponse (v1.2.0)
+
+Response payload for LPO ingestion API.
+
+```python
+class LPOIngestResponse(BaseModel):
+    status: str  # OK, DUPLICATE, BLOCKED, ALREADY_PROCESSED
+    sap_reference: Optional[str] = None
+    folder_path: Optional[str] = None
     trace_id: str
     message: Optional[str] = None
     exception_id: Optional[str] = None

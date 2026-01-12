@@ -372,6 +372,202 @@ $response | ConvertTo-Json
 
 ---
 
+### LPO Ingestion (v1.2.0)
+
+Creates a new LPO record in the system with validation and SharePoint folder path generation.
+
+#### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant C as 📱 Client
+    participant F as ☁️ fn_lpo_ingest
+    participant DB as 🗄️ Data Store
+
+    C->>F: POST /api/lpos/ingest
+    
+    F->>F: Parse & Validate
+    alt Invalid Request
+        F-->>C: 400 Bad Request
+    end
+    
+    F->>DB: Check client_request_id
+    alt Already Processed
+        F-->>C: 200 ALREADY_PROCESSED
+    end
+    
+    F->>DB: Check SAP Reference
+    alt Duplicate SAP Ref
+        F->>DB: Create Exception
+        F-->>C: 409 DUPLICATE
+    end
+    
+    F->>DB: Create LPO Record
+    F->>DB: Attach Files
+    F->>DB: Log User Action
+    F-->>C: 200 OK
+```
+
+#### Request
+
+```http
+POST /api/lpos/ingest
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "client_request_id": "uuid-v4",
+  "sap_reference": "PTE-185",
+  "customer_name": "Acme Utilities",
+  "project_name": "Project X",
+  "brand": "KIMMCO",
+  "po_quantity_sqm": 1250.5,
+  "price_per_sqm": 150.00,
+  "customer_lpo_ref": "CUST-LPO-1234",
+  "terms_of_payment": "30 Days Credit",
+  "wastage_pct": 3.0,
+  "remarks": "Priority delivery",
+  "files": [
+    {
+      "file_type": "lpo",
+      "file_url": "https://sharepoint/.../po.pdf",
+      "file_name": "PO-185.pdf"
+    },
+    {
+      "file_type": "costing",
+      "file_content": "base64-encoded...",
+      "file_name": "costing.xlsx"
+    }
+  ],
+  "uploaded_by": "sales@company.com"
+}
+```
+
+#### Request Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `client_request_id` | string (UUID) | Yes¹ | Idempotency key |
+| `sap_reference` | string | Yes | External SAP reference (unique) |
+| `customer_name` | string | Yes | Customer name |
+| `project_name` | string | Yes | Project name |
+| `brand` | string | Yes | Brand: `KIMMCO` or `WTI` |
+| `po_quantity_sqm` | number | Yes | PO quantity in sqm (must be > 0) |
+| `price_per_sqm` | number | Yes | Price per sqm (must be > 0) |
+| `customer_lpo_ref` | string | No | Customer's LPO reference |
+| `terms_of_payment` | string | No | Payment terms (default: "30 Days Credit") |
+| `wastage_pct` | number | No | Wastage percentage (0-20%) |
+| `remarks` | string | No | User remarks |
+| `files` | array | No | File attachments (multi-file support) |
+| `files[].file_type` | string | Yes | Type: `lpo`, `costing`, `amendment`, `other` |
+| `files[].file_url` | string | No² | URL to file |
+| `files[].file_content` | string | No² | Base64-encoded file content |
+| `files[].file_name` | string | No | Original filename |
+| `uploaded_by` | string | Yes | User who created the LPO |
+
+> ¹ Auto-generated if not provided  
+> ² Either `file_url` or `file_content` is required per file
+
+#### Response: Success (200)
+
+```json
+{
+  "status": "OK",
+  "sap_reference": "PTE-185",
+  "folder_path": "/LPOs/PTE-185_Acme_Utilities",
+  "trace_id": "trace-abc123def456",
+  "message": "LPO created successfully"
+}
+```
+
+#### Response: Duplicate SAP Reference (409)
+
+```json
+{
+  "status": "DUPLICATE",
+  "sap_reference": "PTE-185",
+  "exception_id": "EX-0005",
+  "trace_id": "trace-abc123def456",
+  "message": "SAP Reference already exists"
+}
+```
+
+---
+
+### LPO Update (v1.2.0)
+
+Updates an existing LPO record. Partial updates supported.
+
+#### Request
+
+```http
+PUT /api/lpos/update
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "client_request_id": "uuid-v4",
+  "sap_reference": "PTE-185",
+  "po_quantity_sqm": 1500.0,
+  "lpo_status": "Active",
+  "remarks": "Updated quantity",
+  "updated_by": "manager@company.com"
+}
+```
+
+#### Request Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `client_request_id` | string (UUID) | Yes¹ | Idempotency key |
+| `sap_reference` | string | Yes | SAP reference to update |
+| `po_quantity_sqm` | number | No | New PO quantity |
+| `price_per_sqm` | number | No | New price per sqm |
+| `lpo_status` | string | No | New status |
+| `remarks` | string | No | Updated remarks |
+| `updated_by` | string | Yes | User performing update |
+
+#### Response: Success (200)
+
+```json
+{
+  "status": "OK",
+  "sap_reference": "PTE-185",
+  "trace_id": "trace-abc123def456",
+  "message": "LPO updated successfully"
+}
+```
+
+#### Response: Not Found (404)
+
+```json
+{
+  "status": "NOT_FOUND",
+  "sap_reference": "PTE-999",
+  "trace_id": "trace-abc123def456",
+  "message": "SAP Reference not found"
+}
+```
+
+#### Response: Quantity Conflict (422)
+
+```json
+{
+  "status": "BLOCKED",
+  "exception_id": "EX-0006",
+  "trace_id": "trace-abc123def456",
+  "message": "Cannot reduce PO quantity below delivered amount"
+}
+```
+
+---
+
 ## Error Handling
 
 ### Exception Reason Codes
@@ -389,6 +585,11 @@ $response | ConvertTo-Json
 | `OVERCONSUMPTION` | 422 | Exceeded allocation + tolerance |
 | `PHYSICAL_VARIANCE` | 422 | Physical ≠ System count |
 | `SAP_CREATE_FAILED` | 500 | SAP API call failed |
+| `DUPLICATE_SAP_REF` | 409 | SAP Reference already exists (v1.2.0) |
+| `SAP_REF_NOT_FOUND` | 404 | SAP Reference not found (v1.2.0) |
+| `LPO_INVALID_DATA` | 422 | Invalid LPO data (v1.2.0) |
+| `PO_QUANTITY_CONFLICT` | 422 | Cannot reduce PO quantity below committed (v1.2.0) |
+| `DUPLICATE_LPO_FILE` | 409 | Same LPO file(s) already uploaded (v1.2.0) |
 
 ### Handling Errors in Client Code
 
