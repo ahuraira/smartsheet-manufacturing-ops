@@ -18,6 +18,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-01-10
+
+### Added
+
+#### LPO Ingestion Functions
+- **`fn_lpo_ingest`** - New function to create LPO records
+  - SAP Reference as required external-facing ID
+  - Idempotency via `client_request_id`
+  - Duplicate SAP Reference detection → 409 DUPLICATE
+  - **Multi-file attachment support** (LPO, Costing, Amendment, Other)
+  - Combined file hash for duplicate detection
+  - Files attached to Smartsheet row via API
+  - SharePoint folder path generation
+  - Initial status set to "Draft"
+  - Full audit trail (Exception Log + User Action Log)
+
+- **`fn_lpo_update`** - New function to update existing LPOs
+  - Lookup by SAP Reference
+  - Partial update support (only update provided fields)
+  - Quantity conflict validation (can't reduce below delivered)
+  - Old/new value tracking in audit log
+
+#### New API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/lpos/ingest` | POST | Create new LPO |
+| `/api/lpos/update` | PUT | Update existing LPO |
+
+#### New Models
+- `FileType` enum - lpo, costing, amendment, other
+- `FileAttachment` - Single file with type, url/content, name
+- `LPOIngestRequest` - Request model with multi-file support
+- `LPOUpdateRequest` - Request model for LPO update
+- `LPOIngestResponse` / `LPOUpdateResponse` - Response models
+- `Brand` enum - KIMMCO, WTI
+- `TermsOfPayment` enum - Payment terms options
+
+#### New Helpers
+- `compute_combined_file_hash()` - Combined hash from multiple files
+- `generate_lpo_folder_path()` - Generate SharePoint folder path
+- `sanitize_folder_name()` - Clean strings for folder names
+- `generate_lpo_subfolder_paths()` - Generate all LPO subfolders
+
+#### New Reason Codes
+- `DUPLICATE_SAP_REF` - SAP Reference already exists
+- `SAP_REF_NOT_FOUND` - SAP Reference not found (for update)
+- `LPO_INVALID_DATA` - Invalid LPO data
+- `PO_QUANTITY_CONFLICT` - Quantity reduced below committed
+- `DUPLICATE_LPO_FILE` - Same PO file(s) already uploaded
+
+#### New Action Types
+- `LPO_CREATED` - LPO creation logged
+- `LPO_UPDATED` - LPO update logged
+
+### Changed
+- Extended `Column.LPO_MASTER` with additional column mappings
+- Updated `create_workspace.py` with new LPO columns:
+  - Source File Hash, Folder URL, Client Request ID, Created At, Updated At
+
+### Refactored (SOTA Compliance - 2026-01-12)
+- **Created `shared/audit.py`** - Centralized audit utilities (DRY principle)
+  - `create_exception()` - Reusable exception creation function
+  - `log_user_action()` - Reusable user action logging function
+  - Previously duplicated across `fn_ingest_tag`, `fn_lpo_ingest`, `fn_lpo_update`
+- **Aligned `logical_names.py` with manifest** - Added 5 missing LPO_MASTER columns:
+  - `ESTIMATED_IN_PRODUCTION_3_DAYS`, `BALANCE_VALUE_AED`, `CURRENT_STATUS`
+  - `NUMBER_OF_DELIVERIES`, `DELIVERED_DATE`
+- **Fixed E2E test assertion** - Tag status now correctly expects "Validate" (v1.1.0 change)
+
+### Tests Added
+- `test_lpo_models.py` - 25 unit tests for LPO models, FileAttachment, helpers
+- `test_lpo_ingest.py` - 13 integration tests for fn_lpo_ingest/fn_lpo_update
+- Updated `conftest.py` with 11 new LPO_MASTER mock columns
+- **Total test count: 193 (all passing)**
+
+---
+
 ## [1.1.0] - 2026-01-09
 
 ### Added
@@ -162,6 +239,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 1.2.0 | 2026-01-10 | LPO ingestion/update functions, multi-file support, SharePoint folder generation |
 | 1.1.0 | 2026-01-09 | Base64 file support, complete Tag Registry fields, PO balance fix |
 | 1.0.0 | 2026-01-08 | Full tag ingestion, test suite, documentation |
 | 0.1.0 | 2026-01-05 | Initial setup |

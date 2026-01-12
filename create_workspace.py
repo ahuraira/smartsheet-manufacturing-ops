@@ -83,7 +83,12 @@ SHEET_DEFINITIONS = {
             {"title": "Remarks", "type": "TEXT_NUMBER"},
             {"title": "Delivered Date", "type": "DATE"},
             {"title": "Approval Status", "type": "PICKLIST", "options": ["Submitted", "Approved", "Declined"]},
-            {"title": "Number of Deliveries", "type": "TEXT_NUMBER"}
+            {"title": "Number of Deliveries", "type": "TEXT_NUMBER"},
+            {"title": "Source File Hash", "type": "TEXT_NUMBER"},
+            {"title": "Folder URL", "type": "TEXT_NUMBER"},
+            {"title": "Client Request ID", "type": "TEXT_NUMBER"},
+            {"title": "Created At", "type": "DATETIME"},
+            {"title": "Updated At", "type": "DATETIME"}
         ]
     },
     "01 LPO Audit LOG": {

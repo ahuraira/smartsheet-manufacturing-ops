@@ -90,6 +90,18 @@ class MockWorkspaceManifest:
                 "PO_QUANTITY_SQM": {"id": 3009, "name": "PO Quantity (Sqm)"},
                 "DELIVERED_QUANTITY_SQM": {"id": 3010, "name": "Delivered Quantity (Sqm)"},
                 "REMARKS": {"id": 3011, "name": "Remarks"},
+                # v1.2.0 new columns
+                "SOURCE_FILE_HASH": {"id": 3012, "name": "Source File Hash"},
+                "FOLDER_URL": {"id": 3013, "name": "Folder URL"},
+                "CLIENT_REQUEST_ID": {"id": 3014, "name": "Client Request ID"},
+                "CREATED_BY": {"id": 3015, "name": "Created By"},
+                "UPDATED_AT": {"id": 3016, "name": "Updated At"},
+                "PRICE_PER_SQM": {"id": 3017, "name": "Price per Sqm"},
+                "PO_VALUE": {"id": 3018, "name": "PO Value"},
+                "TERMS_OF_PAYMENT": {"id": 3019, "name": "Terms of Payment"},
+                "HOLD_REASON": {"id": 3020, "name": "Hold Reason"},
+                "DELIVERED_VALUE": {"id": 3021, "name": "Delivered Value"},
+                "PO_BALANCE_QUANTITY": {"id": 3022, "name": "PO Balance Quantity"},
             },
             "CONFIG": {
                 "CONFIG_KEY": {"id": 4001, "name": "config_key"},

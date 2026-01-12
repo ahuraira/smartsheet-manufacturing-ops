@@ -57,6 +57,44 @@ def compute_file_hash_from_base64(file_content_base64: str) -> Optional[str]:
         return None
 
 
+def compute_combined_file_hash(files: list) -> Optional[str]:
+    """
+    Compute a deterministic combined hash from multiple files.
+    
+    Files are sorted by file_type for consistent ordering.
+    Individual hashes are combined and hashed again.
+    
+    Args:
+        files: List of FileAttachment objects
+        
+    Returns:
+        Combined SHA256 hash string, or None if no valid hashes
+    """
+    if not files:
+        return None
+    
+    # Sort by file_type for deterministic ordering
+    sorted_files = sorted(files, key=lambda f: f.file_type.value if hasattr(f.file_type, 'value') else str(f.file_type))
+    
+    individual_hashes = []
+    for f in sorted_files:
+        file_hash = None
+        if hasattr(f, 'file_content') and f.file_content:
+            file_hash = compute_file_hash_from_base64(f.file_content)
+        elif hasattr(f, 'file_url') and f.file_url:
+            file_hash = compute_file_hash_from_url(f.file_url)
+        
+        if file_hash:
+            individual_hashes.append(file_hash)
+    
+    if not individual_hashes:
+        return None
+    
+    # Combine hashes with separator and hash again
+    combined = "|".join(individual_hashes)
+    return hashlib.sha256(combined.encode()).hexdigest()
+
+
 def calculate_sla_due(severity: ExceptionSeverity, created_at: Optional[datetime] = None) -> datetime:
     """
     Calculate SLA due date based on severity.
@@ -111,3 +149,84 @@ def safe_get(d: Dict, *keys, default=None) -> Any:
         else:
             return default
     return d if d is not None else default
+
+
+def sanitize_folder_name(name: str) -> str:
+    """
+    Sanitize a string for use in SharePoint folder paths.
+    Removes/replaces characters that are invalid in folder names.
+    """
+    if not name:
+        return "Unknown"
+    
+    # Replace invalid characters with underscore
+    invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '#', '%']
+    result = name
+    for char in invalid_chars:
+        result = result.replace(char, '_')
+    
+    # Remove leading/trailing spaces and dots
+    result = result.strip(' .')
+    
+    # Replace multiple underscores with single
+    while '__' in result:
+        result = result.replace('__', '_')
+    
+    # Truncate to reasonable length (SharePoint limit considerations)
+    return result[:50] if result else "Unknown"
+
+
+def generate_lpo_folder_path(
+    sap_reference: str, 
+    customer_name: str,
+    base_url: Optional[str] = None
+) -> str:
+    """
+    Generate canonical SharePoint folder path for LPO.
+    
+    Format: {base_url}/LPOs/{sap_reference}_{customer_name}/
+    
+    Args:
+        sap_reference: SAP reference number (e.g., PTE-185)
+        customer_name: Customer name
+        base_url: SharePoint document library URL (optional, uses env var if not provided)
+    
+    Returns:
+        Full folder path URL
+    
+    Example:
+        >>> generate_lpo_folder_path("PTE-185", "Acme Corp")
+        "https://.../Shared Documents/LPOs/PTE-185_Acme_Corp"
+    """
+    import os
+    
+    # Get base URL from env if not provided
+    if not base_url:
+        base_url = os.environ.get(
+            "SHAREPOINT_BASE_URL", 
+            "https://your-tenant.sharepoint.com/sites/Ducts/Shared Documents"
+        )
+    
+    # Sanitize customer name for folder path
+    safe_customer = sanitize_folder_name(customer_name)
+    safe_sap = sanitize_folder_name(sap_reference)
+    
+    # Build path
+    folder_name = f"{safe_sap}_{safe_customer}"
+    return f"{base_url.rstrip('/')}/LPOs/{folder_name}"
+
+
+def generate_lpo_subfolder_paths(lpo_folder_path: str) -> Dict[str, str]:
+    """
+    Generate all subfolder paths for an LPO folder.
+    
+    Returns dict with keys: TagSheets, CutSessions, Deliveries, Invoices, Remnants, Audit
+    """
+    return {
+        "TagSheets": f"{lpo_folder_path}/TagSheets",
+        "CutSessions": f"{lpo_folder_path}/CutSessions",
+        "Deliveries": f"{lpo_folder_path}/Deliveries",
+        "Invoices": f"{lpo_folder_path}/Invoices",
+        "Remnants": f"{lpo_folder_path}/Remnants",
+        "Audit": f"{lpo_folder_path}/Audit",
+    }

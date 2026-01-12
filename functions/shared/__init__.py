@@ -84,6 +84,15 @@ from .models import (
     UserActionRecord,
     LPORecord,
     TagRecord,
+    # LPO models (v1.1.0+)
+    Brand,
+    TermsOfPayment,
+    FileType,
+    FileAttachment,
+    LPOIngestRequest,
+    LPOUpdateRequest,
+    LPOIngestResponse,
+    LPOUpdateResponse,
 )
 
 # Smartsheet client and exceptions
@@ -137,11 +146,22 @@ from .helpers import (
     compute_file_hash,
     compute_file_hash_from_url,
     compute_file_hash_from_base64,
+    compute_combined_file_hash,
     calculate_sla_due,
     format_datetime_for_smartsheet,
     parse_float_safe,
     parse_int_safe,
     safe_get,
+    # LPO folder helpers (v1.1.0+)
+    sanitize_folder_name,
+    generate_lpo_folder_path,
+    generate_lpo_subfolder_paths,
+)
+
+# Audit utilities (DRY - shared across functions)
+from .audit import (
+    create_exception,
+    log_user_action,
 )
 
 __all__ = [
@@ -166,6 +186,13 @@ __all__ = [
     "UserActionRecord",
     "LPORecord",
     "TagRecord",
+    # LPO models (v1.1.0+)
+    "Brand",
+    "TermsOfPayment",
+    "LPOIngestRequest",
+    "LPOUpdateRequest",
+    "LPOIngestResponse",
+    "LPOUpdateResponse",
     # Client and exceptions
     "SmartsheetClient",
     "get_smartsheet_client",
@@ -203,9 +230,17 @@ __all__ = [
     "generate_trace_id",
     "compute_file_hash",
     "compute_file_hash_from_url",
+    "compute_file_hash_from_base64",
     "calculate_sla_due",
     "format_datetime_for_smartsheet",
     "parse_float_safe",
     "parse_int_safe",
     "safe_get",
+    # LPO folder helpers (v1.1.0+)
+    "sanitize_folder_name",
+    "generate_lpo_folder_path",
+    "generate_lpo_subfolder_paths",
+    # Audit utilities (DRY - v1.2.0+)
+    "create_exception",
+    "log_user_action",
 ]

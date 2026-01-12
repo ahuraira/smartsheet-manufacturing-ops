@@ -51,7 +51,7 @@ See Also
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from enum import Enum
 import uuid
 
@@ -114,6 +114,12 @@ class ReasonCode(str, Enum):
     LPO_ON_HOLD = "LPO_ON_HOLD"
     INSUFFICIENT_PO_BALANCE = "INSUFFICIENT_PO_BALANCE"
     PARSE_FAILED = "PARSE_FAILED"
+    # LPO-specific reason codes
+    DUPLICATE_SAP_REF = "DUPLICATE_SAP_REF"
+    SAP_REF_NOT_FOUND = "SAP_REF_NOT_FOUND"
+    LPO_INVALID_DATA = "LPO_INVALID_DATA"
+    PO_QUANTITY_CONFLICT = "PO_QUANTITY_CONFLICT"
+    DUPLICATE_LPO_FILE = "DUPLICATE_LPO_FILE"
 
 
 class ActionType(str, Enum):
@@ -122,6 +128,8 @@ class ActionType(str, Enum):
     TAG_CREATED = "TAG_CREATED"
     TAG_UPDATED = "TAG_UPDATED"
     TAG_RELEASED = "TAG_RELEASED"
+    LPO_CREATED = "LPO_CREATED"
+    LPO_UPDATED = "LPO_UPDATED"
     ALLOCATION_CREATED = "ALLOCATION_CREATED"
     CONSUMPTION_SUBMITTED = "CONSUMPTION_SUBMITTED"
     DO_CREATED = "DO_CREATED"
@@ -230,3 +238,136 @@ class TagRecord(BaseModel):
     client_request_id: Optional[str] = None
     submitted_by: Optional[str] = None
     row_id: Optional[int] = None  # Smartsheet row ID
+
+
+# ============== LPO Request/Response Models ==============
+
+class Brand(str, Enum):
+    """Valid brand values."""
+    KIMMCO = "KIMMCO"
+    WTI = "WTI"
+
+
+
+class TermsOfPayment(str, Enum):
+    """Valid payment terms."""
+    DAYS_30 = "30 Days Credit"
+    DAYS_60 = "60 Days Credit"
+    DAYS_90 = "90 Days Credit"
+    IMMEDIATE = "Immediate Payment"
+
+
+class FileType(str, Enum):
+    """Known file types for LPO attachments."""
+    LPO = "lpo"             # Original purchase order document
+    COSTING = "costing"     # Costing/pricing sheet
+    AMENDMENT = "amendment" # PO amendments/revisions
+    OTHER = "other"         # Any other document type
+
+
+class FileAttachment(BaseModel):
+    """Single file attachment for LPO."""
+    file_type: FileType = FileType.OTHER
+    file_url: Optional[str] = None
+    file_content: Optional[str] = None  # Base64 encoded
+    file_name: Optional[str] = None     # Original filename
+    
+    @model_validator(mode='after')
+    def validate_file_source(self):
+        """Ensure at least one file source is provided."""
+        if not self.file_url and not self.file_content:
+            raise ValueError("Either file_url or file_content is required")
+        return self
+
+
+class LPOIngestRequest(BaseModel):
+    """Request payload for LPO ingestion API (create)."""
+    client_request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    
+    # Required fields
+    sap_reference: str  # REQUIRED - external ID (e.g., PTE-185)
+    customer_name: str
+    project_name: str
+    brand: str  # KIMMCO or WTI
+    po_quantity_sqm: float = Field(gt=0)  # Must be positive
+    price_per_sqm: float = Field(gt=0)  # Must be positive
+    
+    # Optional fields
+    customer_lpo_ref: Optional[str] = None
+    terms_of_payment: str = "30 Days Credit"
+    wastage_pct: float = Field(default=0.0, ge=0, le=20)  # 0-20%
+    hold_reason: Optional[str] = None
+    remarks: Optional[str] = None
+    
+    # File attachments (multi-file support)
+    files: List[FileAttachment] = Field(default_factory=list)
+    
+    # Legacy single-file fields (backward compatibility)
+    file_url: Optional[str] = None
+    file_content: Optional[str] = None
+    original_file_name: Optional[str] = None
+    
+    # User info
+    uploaded_by: str
+    
+    # SharePoint config (optional, can use env vars)
+    sharepoint_base_url: Optional[str] = None
+    
+    def get_all_files(self) -> List[FileAttachment]:
+        """Get all files including legacy single-file fields."""
+        all_files = list(self.files)
+        
+        # Convert legacy fields to FileAttachment if present
+        if self.file_url or self.file_content:
+            legacy_file = FileAttachment(
+                file_type=FileType.LPO,  # Assume legacy = LPO type
+                file_url=self.file_url,
+                file_content=self.file_content,
+                file_name=self.original_file_name
+            )
+            all_files.insert(0, legacy_file)
+        
+        return all_files
+
+
+
+class LPOUpdateRequest(BaseModel):
+    """Request payload for LPO update API."""
+    client_request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    
+    # Key for lookup
+    sap_reference: str  # REQUIRED - identifies which LPO to update
+    
+    # Optional fields - only update what's provided
+    customer_lpo_ref: Optional[str] = None
+    customer_name: Optional[str] = None
+    project_name: Optional[str] = None
+    po_quantity_sqm: Optional[float] = Field(default=None, gt=0)
+    price_per_sqm: Optional[float] = Field(default=None, gt=0)
+    terms_of_payment: Optional[str] = None
+    wastage_pct: Optional[float] = Field(default=None, ge=0, le=20)
+    hold_reason: Optional[str] = None
+    lpo_status: Optional[str] = None  # Draft, Active, On Hold, etc.
+    remarks: Optional[str] = None
+    
+    # User info
+    updated_by: str
+
+
+class LPOIngestResponse(BaseModel):
+    """Response payload for LPO ingestion API."""
+    status: str  # OK, DUPLICATE, BLOCKED, ALREADY_PROCESSED
+    sap_reference: Optional[str] = None
+    folder_path: Optional[str] = None
+    trace_id: str
+    message: Optional[str] = None
+    exception_id: Optional[str] = None
+
+
+class LPOUpdateResponse(BaseModel):
+    """Response payload for LPO update API."""
+    status: str  # OK, NOT_FOUND, BLOCKED
+    sap_reference: Optional[str] = None
+    trace_id: str
+    message: Optional[str] = None
+    exception_id: Optional[str] = None

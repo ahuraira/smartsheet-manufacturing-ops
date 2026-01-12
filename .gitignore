@@ -30,6 +30,11 @@ workspace_created_*.json
 workspaces_list.json
 workspace_manifest.json
 task.md
+functions/smartsheet_workspace_metadata.json
+functions/workspace_created_*.json
+functions/workspaces_list.json
+functions/workspace_manifest.json
+functions/task.md
 
 # Azure Functions
 functions/local.settings.json
@@ -60,4 +65,3 @@ test_results_full.log
 
 #VSCode
 .vscode
-
