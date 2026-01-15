@@ -15,7 +15,7 @@ from typing import Optional
 
 from .logical_names import Sheet, Column
 from .models import ExceptionSeverity, ExceptionSource, ReasonCode, ActionType
-from .id_generator import generate_next_exception_id
+from .id_generator import generate_next_exception_id, generate_next_action_id
 from .helpers import calculate_sla_due, format_datetime_for_smartsheet
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ def log_user_action(
     new_value: Optional[str] = None,
     notes: Optional[str] = None,
     trace_id: Optional[str] = None,
-) -> None:
+) -> Optional[str]:
     """
     Log a user action to the audit trail.
     
@@ -115,7 +115,13 @@ def log_user_action(
         new_value: New value (for creates/updates)
         notes: Additional notes about the action
         trace_id: Correlation ID for tracing
+        
+    Returns:
+        The generated action_id (e.g., "ACT-0001") or None if failed
     """
+    # Generate action ID
+    action_id = generate_next_action_id(client)
+    
     # Handle Sheet enum values
     target_table_str = target_table
     if hasattr(target_table, 'value'):
@@ -124,6 +130,7 @@ def log_user_action(
         target_table_str = str(target_table)
     
     action_data = {
+        Column.USER_ACTION_LOG.ACTION_ID: action_id,
         Column.USER_ACTION_LOG.TIMESTAMP: format_datetime_for_smartsheet(datetime.now()),
         Column.USER_ACTION_LOG.USER_ID: user_id,
         Column.USER_ACTION_LOG.ACTION_TYPE: action_type.value,
@@ -143,6 +150,9 @@ def log_user_action(
     
     try:
         client.add_row(Sheet.USER_ACTION_LOG, action_data)
-        logger.info(f"[{trace_id}] User action logged: {action_type.value}")
+        logger.info(f"[{trace_id}] User action logged: {action_id} - {action_type.value}")
+        return action_id
     except Exception as e:
         logger.error(f"[{trace_id}] Failed to log user action: {e}")
+        return None
+

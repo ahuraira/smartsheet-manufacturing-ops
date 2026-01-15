@@ -145,13 +145,19 @@ flowchart TB
     end
     
     subgraph Compute["☁️ COMPUTE LAYER"]
-        subgraph Functions[Azure Functions]
+        subgraph Functions["Core Functions"]
             FN1[fn_ingest_tag]
+            FN7[fn_lpo_ingest]
+            FN8[fn_schedule_tag]
             FN2[fn_parse_nest]
             FN3[fn_allocate]
             FN4[fn_pick_confm]
             FN5[fn_consume]
             FN6[fn_create_do]
+        end
+        subgraph Webhooks["Webhook Adapter"]
+            WH1[fn_webhook_receiver]
+            WH2[fn_event_processor]
         end
         Shared[📦 Shared Library<br/>models • client • helpers]
     end
@@ -282,6 +288,35 @@ flowchart LR
 | Azure App Insights | Telemetry, Logging | All functions |
 | Power BI | Dashboards | KPIs, Reporting |
 
+### Event-Driven Architecture (v1.3.0+)
+
+The system supports real-time event processing via Smartsheet webhooks:
+
+```mermaid
+flowchart LR
+    SS[📊 Smartsheet]
+    WRC[🔔 fn_webhook_receiver]
+    SB[(Service Bus)]
+    EVP[⚙️ fn_event_processor]
+    CORE[☁️ Core Functions]
+    
+    SS -->|Webhook Callback| WRC
+    WRC -->|Enqueue| SB
+    SB -->|Trigger| EVP
+    EVP -->|Route| CORE
+    
+    style SS fill:#4CAF50,color:#fff
+    style WRC fill:#FF9800,color:#fff
+    style SB fill:#9C27B0,color:#fff
+    style EVP fill:#2196F3,color:#fff
+```
+
+| Component | Function | Description |
+|-----------|----------|-------------|
+| `fn_webhook_receiver` | Receive | Handles verification + event parsing |
+| `fn_webhook_admin` | Manage | Register, list, delete webhooks |
+| `fn_event_processor` | Process | Routes events to appropriate handlers |
+
 ---
 
 ## Key Concepts
@@ -315,6 +350,8 @@ IDs are generated server-side using sequence counters stored in the Config sheet
 | Exception | `EX-NNNN` | EX-0042 |
 | Allocation | `ALLOC-NNNN` | ALLOC-0123 |
 | Delivery Order | `DO-NNNN` | DO-0015 |
+| Schedule | `SCHED-NNNN` | SCHED-0001 |
+| Action Log | `ACT-NNNN` | ACT-0099 |
 
 **Why sequential IDs?**
 - Human-readable and easy to communicate

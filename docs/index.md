@@ -1,6 +1,6 @@
 # 📚 Ducts Manufacturing Inventory Management - Documentation Hub
 
-> **Version:** 1.2.0 | **Last Updated:** 2026-01-12 | **Status:** Active Development
+> **Version:** 1.3.0 | **Last Updated:** 2026-01-13 | **Status:** Active Development
 
 Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory Management System. This documentation follows the [Diátaxis framework](https://diataxis.fr/) to organize content by user needs: **Tutorials**, **How-to Guides**, **Reference**, and **Explanation**.
 
@@ -107,12 +107,17 @@ Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory
 │   ├── data_strucutre_specification.md
 │   ├── tag_ingestion_architecture.md
 │   └── flow_architecture.md
-├── 📂 functions/                # ⚡ Azure Functions source
+├── 📂 functions/                # ⚡ Azure Functions (Core)
 │   ├── 📂 fn_ingest_tag/        # Tag ingestion function
 │   ├── 📂 fn_lpo_ingest/        # LPO ingestion function (v1.2.0)
 │   ├── 📂 fn_lpo_update/        # LPO update function (v1.2.0)
+│   ├── 📂 fn_schedule_tag/      # Production scheduling (v1.3.0)
 │   ├── 📂 shared/               # Shared modules
 │   └── 📂 tests/                # Test suite
+├── 📂 function_adapter/         # ⚡ Azure Functions (Webhooks)
+│   ├── 📂 fn_webhook_receiver/  # Smartsheet webhook receiver
+│   ├── 📂 fn_webhook_admin/     # Webhook management API
+│   └── 📂 fn_event_processor/   # Service Bus event processor
 ├── README.md                    # Project README
 ├── implementation_plan.md       # Development roadmap
 ├── config_values.md             # Config table entries
@@ -161,5 +166,5 @@ This documentation follows these standards:
 ---
 
 <p align="center">
-  <em>Last updated: 2026-01-12 | Maintained by the Development Team</em>
+  <em>Last updated: 2026-01-13 | Maintained by the Development Team</em>
 </p>

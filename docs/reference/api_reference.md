@@ -14,9 +14,13 @@ This document provides complete API documentation for all Azure Functions endpoi
 4. [Response Format](#response-format)
 5. [Endpoints](#endpoints)
    - [Tag Ingestion](#tag-ingestion)
-6. [Error Handling](#error-handling)
-7. [Data Models](#data-models)
-8. [Rate Limiting](#rate-limiting)
+   - [LPO Ingestion](#lpo-ingestion-v120) (v1.2.0)
+   - [LPO Update](#lpo-update-v120) (v1.2.0)
+   - [Production Scheduling](#production-scheduling-v130) (v1.3.0)
+6. [Webhook Management](#webhook-management-function_adapter) (function_adapter)
+7. [Error Handling](#error-handling)
+8. [Data Models](#data-models)
+9. [Rate Limiting](#rate-limiting)
 
 ---
 
@@ -568,6 +572,230 @@ Content-Type: application/json
 
 ---
 
+### Production Scheduling (v1.3.0)
+
+Schedules a tag for production on a specific machine and shift.
+
+#### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant C as 📱 Client
+    participant F as ☁️ fn_schedule_tag
+    participant DB as 🗄️ Data Store
+
+    C->>F: POST /api/production/schedule
+    
+    F->>F: Parse & Validate
+    alt Invalid Request
+        F-->>C: 400 Bad Request
+    end
+    
+    F->>DB: Check client_request_id
+    alt Already Processed
+        F-->>C: 200 ALREADY_PROCESSED
+    end
+    
+    F->>DB: Validate Tag
+    alt Tag Invalid
+        F->>DB: Create Exception
+        F-->>C: 422 BLOCKED
+    end
+    
+    F->>DB: Validate Machine
+    alt Machine Invalid
+        F->>DB: Create Exception
+        F-->>C: 422 BLOCKED
+    end
+    
+    F->>DB: Check PO Balance
+    alt Insufficient Balance
+        F->>DB: Create Exception
+        F-->>C: 422 BLOCKED
+    end
+    
+    F->>DB: Create Schedule Record
+    F->>DB: Log User Action
+    F-->>C: 200 OK (schedule_id, deadline)
+```
+
+#### Request
+
+```http
+POST /api/production/schedule
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "client_request_id": "uuid-v4",
+  "tag_id": "TAG-0001",
+  "machine_id": "CUT-001",
+  "planned_date": "2026-01-15",
+  "shift": "Morning",
+  "planned_quantity_sqm": 50.0,
+  "scheduled_by": "planner@company.com",
+  "notes": "Priority order"
+}
+```
+
+#### Request Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `client_request_id` | string (UUID) | Yes¹ | Idempotency key |
+| `tag_id` | string | Yes | Tag ID to schedule (e.g., TAG-0001) |
+| `machine_id` | string | Yes | Machine ID (e.g., CUT-001) |
+| `planned_date` | string (ISO) | Yes | Planned production date |
+| `shift` | string | Yes | Shift: `Morning` or `Evening` |
+| `planned_quantity_sqm` | number | Yes | Planned quantity in sqm (> 0) |
+| `scheduled_by` | string | Yes | User creating the schedule |
+| `notes` | string | No | Additional notes |
+
+> ¹ Auto-generated if not provided
+
+#### Validations Performed
+
+1. **Tag Validation**: Tag must exist and status ≠ CANCELLED/CLOSED
+2. **Machine Validation**: Machine must exist and be OPERATIONAL
+3. **PO Balance Check**: (committed + planned) ≤ PO quantity (with 5% tolerance)
+4. **Duplicate Check**: Same tag already scheduled → 409 DUPLICATE
+
+#### Response: Success (200)
+
+```json
+{
+  "status": "OK",
+  "schedule_id": "SCHED-0001",
+  "tag_id": "TAG-0001",
+  "machine_id": "CUT-001",
+  "planned_date": "2026-01-15",
+  "shift": "Morning",
+  "next_action_deadline": "2026-01-14T18:00:00",
+  "trace_id": "trace-abc123def456",
+  "message": "Schedule created. Nesting file required by 2026-01-14 18:00"
+}
+```
+
+> **T-1 Deadline**: `next_action_deadline` indicates when the nesting file must be uploaded (18:00 the day before).
+
+#### Response: Tag Not Found (422)
+
+```json
+{
+  "status": "BLOCKED",
+  "exception_id": "EX-0007",
+  "trace_id": "trace-abc123def456",
+  "message": "Tag TAG-9999 not found"
+}
+```
+
+#### Response: Machine Under Maintenance (422)
+
+```json
+{
+  "status": "BLOCKED",
+  "exception_id": "EX-0008",
+  "trace_id": "trace-abc123def456",
+  "message": "Machine CUT-001 is under maintenance"
+}
+```
+
+---
+
+## Webhook Management (function_adapter)
+
+These endpoints are served by the separate `function_adapter` Function App (port 7072 locally).
+
+### Register Webhook
+
+Registers a new webhook for a Smartsheet sheet.
+
+```http
+POST /api/webhooks/register
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "sheet_id": 123456789,
+  "name": "TAG_REGISTRY Webhook"
+}
+```
+
+#### Response
+
+```json
+{
+  "status": "created",
+  "webhook": {
+    "id": 987654321,
+    "name": "TAG_REGISTRY Webhook",
+    "status": "ENABLED"
+  },
+  "message": "Webhook created. Check status - should be ENABLED after verification."
+}
+```
+
+### List Webhooks
+
+```http
+GET /api/webhooks
+```
+
+#### Response
+
+```json
+{
+  "count": 2,
+  "webhooks": [
+    { "id": 987654321, "name": "TAG_REGISTRY Webhook", "status": "ENABLED" },
+    { "id": 987654322, "name": "LPO_MASTER Webhook", "status": "ENABLED" }
+  ]
+}
+```
+
+### Delete Webhook
+
+```http
+DELETE /api/webhooks/{webhook_id}
+```
+
+#### Response
+
+```json
+{
+  "status": "deleted",
+  "webhook_id": "987654321"
+}
+```
+
+### Refresh Webhooks
+
+Re-enables all disabled webhooks.
+
+```http
+POST /api/webhooks/refresh
+```
+
+#### Response
+
+```json
+{
+  "status": "refreshed",
+  "results": [
+    { "id": 987654321, "name": "TAG_REGISTRY Webhook", "action": "skipped", "reason": "Already enabled" },
+    { "id": 987654322, "name": "LPO_MASTER Webhook", "action": "enabled", "new_status": "ENABLED" }
+  ]
+}
+```
+
+---
+
 ## Error Handling
 
 ### Exception Reason Codes
@@ -590,6 +818,11 @@ Content-Type: application/json
 | `LPO_INVALID_DATA` | 422 | Invalid LPO data (v1.2.0) |
 | `PO_QUANTITY_CONFLICT` | 422 | Cannot reduce PO quantity below committed (v1.2.0) |
 | `DUPLICATE_LPO_FILE` | 409 | Same LPO file(s) already uploaded (v1.2.0) |
+| `MACHINE_NOT_FOUND` | 422 | Machine ID not found (v1.3.0) |
+| `MACHINE_MAINTENANCE` | 422 | Machine is under maintenance (v1.3.0) |
+| `TAG_NOT_FOUND` | 422 | Tag ID not found (v1.3.0) |
+| `TAG_INVALID_STATUS` | 422 | Tag status is CANCELLED or CLOSED (v1.3.0) |
+| `DUPLICATE_SCHEDULE` | 409 | Tag already scheduled (v1.3.0) |
 
 ### Handling Errors in Client Code
 

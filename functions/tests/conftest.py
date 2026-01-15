@@ -53,6 +53,11 @@ class MockWorkspaceManifest:
             "EXCEPTION_LOG": {"id": 1004, "name": "99 Exception Log"},
             "USER_ACTION_LOG": {"id": 1005, "name": "98 User Action Log"},
             "REFERENCE_DATA": {"id": 1006, "name": "00 Reference Data"},
+            # v1.3.0 new sheets
+            "MACHINE_MASTER": {"id": 1007, "name": "00b Machine Master"},
+            "PRODUCTION_PLANNING": {"id": 1008, "name": "03 Production Planning"},
+            # Alias for physical name lookup in fn_schedule_tag
+            "00B_MACHINE_MASTER": {"id": 1007, "name": "00b Machine Master"},
         }
         
         # Define column mappings per sheet
@@ -102,6 +107,10 @@ class MockWorkspaceManifest:
                 "HOLD_REASON": {"id": 3020, "name": "Hold Reason"},
                 "DELIVERED_VALUE": {"id": 3021, "name": "Delivered Value"},
                 "PO_BALANCE_QUANTITY": {"id": 3022, "name": "PO Balance Quantity"},
+                # v1.3.0 new columns
+                "PLANNED_QUANTITY": {"id": 3023, "name": "Planned Quantity"},
+                "ALLOCATED_QUANTITY": {"id": 3024, "name": "Allocated Quantity"},
+                "UPDATED_BY": {"id": 3025, "name": "Updated By"},
             },
             "CONFIG": {
                 "CONFIG_KEY": {"id": 4001, "name": "config_key"},
@@ -133,6 +142,35 @@ class MockWorkspaceManifest:
                 "OLD_VALUE": {"id": 6007, "name": "Old Value"},
                 "NEW_VALUE": {"id": 6008, "name": "New Value"},
                 "NOTES": {"id": 6009, "name": "Notes"},
+            },
+            # v1.3.0 new sheet columns
+            "MACHINE_MASTER": {
+                "MACHINE_ID": {"id": 7001, "name": "Machine ID"},
+                "NAME": {"id": 7002, "name": "Machine Name"},
+                "STATUS": {"id": 7003, "name": "Status"},
+                "SQM_PER_HOUR": {"id": 7004, "name": "Sqm per Hour"},
+                "AVAILABLE_SHIFTS": {"id": 7005, "name": "Available Shifts"},
+            },
+            "00B_MACHINE_MASTER": {  # Alias for physical name lookup
+                "MACHINE_ID": {"id": 7001, "name": "Machine ID"},
+                "NAME": {"id": 7002, "name": "Machine Name"},
+                "STATUS": {"id": 7003, "name": "Status"},
+                "SQM_PER_HOUR": {"id": 7004, "name": "Sqm per Hour"},
+                "AVAILABLE_SHIFTS": {"id": 7005, "name": "Available Shifts"},
+            },
+            "PRODUCTION_PLANNING": {
+                "SCHEDULE_ID": {"id": 8001, "name": "Schedule ID"},
+                "TAG_SHEET_ID": {"id": 8002, "name": "Tag Sheet ID"},
+                "PLANNED_DATE": {"id": 8003, "name": "Planned Date"},
+                "SHIFT": {"id": 8004, "name": "Shift"},
+                "MACHINE_ASSIGNED": {"id": 8005, "name": "Machine Assigned"},
+                "PLANNED_QUANTITY": {"id": 8006, "name": "Planned Quantity"},
+                "STATUS": {"id": 8007, "name": "Status"},
+                "CREATED_BY": {"id": 8008, "name": "Created By"},
+                "CREATED_AT": {"id": 8009, "name": "Created At"},
+                "CLIENT_REQUEST_ID": {"id": 8010, "name": "Client Request ID"},
+                "TRACE_ID": {"id": 8011, "name": "Trace ID"},
+                "REMARKS": {"id": 8012, "name": "Remarks"},
             },
         }
     

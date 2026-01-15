@@ -1,0 +1,24 @@
+{
+    "sap_reference": "PTE-LOCAL-TEST-001",
+    "customer_name": "Local Test Corp",
+    "project_name": "Local Test Project",
+    "brand": "KIMMCO",
+    "po_quantity_sqm": 500.0,
+    "price_per_sqm": 100.00,
+    "terms_of_payment": "30 Days Credit",
+    "wastage_pct": 2.5,
+    "remarks": "Local test with attachments",
+    "uploaded_by": "localtest@test.com",
+    "files": [
+        {
+            "file_type": "lpo",
+            "file_content": "VGVzdCBMUE8gZmlsZSBjb250ZW50",
+            "file_name": "local-test-po.pdf"
+        },
+        {
+            "file_type": "costing",
+            "file_content": "VGVzdCBjb3N0aW5nIGZpbGUgY29udGVudA==",
+            "file_name": "local-test-costing.xlsx"
+        }
+    ]
+}

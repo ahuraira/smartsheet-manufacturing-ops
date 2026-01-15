@@ -120,6 +120,15 @@ class ReasonCode(str, Enum):
     LPO_INVALID_DATA = "LPO_INVALID_DATA"
     PO_QUANTITY_CONFLICT = "PO_QUANTITY_CONFLICT"
     DUPLICATE_LPO_FILE = "DUPLICATE_LPO_FILE"
+    # Scheduling-specific reason codes
+    MACHINE_NOT_FOUND = "MACHINE_NOT_FOUND"
+    MACHINE_MAINTENANCE = "MACHINE_MAINTENANCE"
+    CAPACITY_WARNING = "CAPACITY_WARNING"
+    DUPLICATE_SCHEDULE = "DUPLICATE_SCHEDULE"
+    T1_NESTING_DELAY = "T1_NESTING_DELAY"
+    PLANNED_MISMATCH = "PLANNED_MISMATCH"
+    TAG_NOT_FOUND = "TAG_NOT_FOUND"
+    TAG_INVALID_STATUS = "TAG_INVALID_STATUS"
 
 
 class ActionType(str, Enum):
@@ -136,6 +145,34 @@ class ActionType(str, Enum):
     EXCEPTION_CREATED = "EXCEPTION_CREATED"
     EXCEPTION_RESOLVED = "EXCEPTION_RESOLVED"
     OPERATION_FAILED = "OPERATION_FAILED"
+    # Scheduling actions
+    SCHEDULE_CREATED = "SCHEDULE_CREATED"
+    SCHEDULE_UPDATED = "SCHEDULE_UPDATED"
+    SCHEDULE_CANCELLED = "SCHEDULE_CANCELLED"
+
+
+class Shift(str, Enum):
+    """Production shift values - must match Smartsheet picklist."""
+    MORNING = "Morning"
+    EVENING = "Evening"
+
+
+class ScheduleStatus(str, Enum):
+    """Production schedule status values - must match Smartsheet picklist."""
+    PLANNED = "Planned"
+    RELEASED_FOR_NESTING = "Released for Nesting"
+    NESTING_UPLOADED = "Nesting Uploaded"
+    ALLOCATED = "Allocated"
+    IN_PRODUCTION = "In Production"
+    COMPLETED = "Completed"
+    CANCELLED = "Cancelled"
+    DELAYED = "Delayed"
+
+
+class MachineStatus(str, Enum):
+    """Machine status values - must match Smartsheet picklist."""
+    OPERATIONAL = "Operational"
+    MAINTENANCE = "Maintenance"
 
 
 # ============== Request/Response Models ==============
@@ -174,6 +211,28 @@ class TagIngestResponse(BaseModel):
     trace_id: str
     message: Optional[str] = None
     exception_id: Optional[str] = None
+
+
+class ScheduleTagRequest(BaseModel):
+    """Request payload for production schedule API."""
+    client_request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    tag_id: str
+    planned_date: str  # YYYY-MM-DD format
+    shift: str  # Morning or Evening
+    machine_id: str
+    planned_qty_m2: Optional[float] = None  # Defaults to tag expected_consumption
+    requested_by: str
+    notes: Optional[str] = None
+
+
+class ScheduleTagResponse(BaseModel):
+    """Response payload for production schedule API."""
+    status: str  # RELEASED_FOR_NESTING, BLOCKED, CONFLICT
+    schedule_id: Optional[str] = None
+    next_action_deadline: Optional[str] = None  # T-1 cutoff timestamp
+    trace_id: str
+    exception_id: Optional[str] = None
+    message: Optional[str] = None
 
 
 class ExceptionRecord(BaseModel):

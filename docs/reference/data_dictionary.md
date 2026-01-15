@@ -166,6 +166,14 @@ class ReasonCode(str, Enum):
     LPO_INVALID_DATA = "LPO_INVALID_DATA"
     PO_QUANTITY_CONFLICT = "PO_QUANTITY_CONFLICT"
     DUPLICATE_LPO_FILE = "DUPLICATE_LPO_FILE"
+    # Scheduling-specific reason codes (v1.3.0)
+    MACHINE_NOT_FOUND = "MACHINE_NOT_FOUND"
+    MACHINE_MAINTENANCE = "MACHINE_MAINTENANCE"
+    TAG_NOT_FOUND = "TAG_NOT_FOUND"
+    TAG_INVALID_STATUS = "TAG_INVALID_STATUS"
+    DUPLICATE_SCHEDULE = "DUPLICATE_SCHEDULE"
+    CAPACITY_WARNING = "CAPACITY_WARNING"
+    T1_NESTING_DELAY = "T1_NESTING_DELAY"
 ```
 
 ### ActionType
@@ -180,6 +188,9 @@ class ActionType(str, Enum):
     TAG_RELEASED = "TAG_RELEASED"
     LPO_CREATED = "LPO_CREATED"  # v1.2.0
     LPO_UPDATED = "LPO_UPDATED"  # v1.2.0
+    SCHEDULE_CREATED = "SCHEDULE_CREATED"  # v1.3.0
+    SCHEDULE_UPDATED = "SCHEDULE_UPDATED"  # v1.3.0
+    SCHEDULE_CANCELLED = "SCHEDULE_CANCELLED"  # v1.3.0
     ALLOCATION_CREATED = "ALLOCATION_CREATED"
     CONSUMPTION_SUBMITTED = "CONSUMPTION_SUBMITTED"
     DO_CREATED = "DO_CREATED"
@@ -365,6 +376,83 @@ class LPOIngestResponse(BaseModel):
     status: str  # OK, DUPLICATE, BLOCKED, ALREADY_PROCESSED
     sap_reference: Optional[str] = None
     folder_path: Optional[str] = None
+    trace_id: str
+    message: Optional[str] = None
+    exception_id: Optional[str] = None
+```
+
+### Shift (v1.3.0)
+
+Production shift values.
+
+```python
+class Shift(str, Enum):
+    MORNING = "Morning"
+    EVENING = "Evening"
+```
+
+### ScheduleStatus (v1.3.0)
+
+Status values for production schedules.
+
+```python
+class ScheduleStatus(str, Enum):
+    PLANNED = "Planned"
+    RELEASED_FOR_NESTING = "Released for Nesting"
+    NESTING_UPLOADED = "Nesting Uploaded"
+    ALLOCATED = "Allocated"
+    CANCELLED = "Cancelled"
+    DELAYED = "Delayed"
+```
+
+### MachineStatus (v1.3.0)
+
+Status values for machines.
+
+```python
+class MachineStatus(str, Enum):
+    OPERATIONAL = "Operational"
+    MAINTENANCE = "Maintenance"
+```
+
+### ScheduleTagRequest (v1.3.0)
+
+Request payload for production scheduling API.
+
+```python
+class ScheduleTagRequest(BaseModel):
+    client_request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    tag_id: str  # TAG-0001
+    machine_id: str  # CUT-001
+    planned_date: str  # ISO date
+    shift: Shift
+    planned_quantity_sqm: float = Field(gt=0)
+    scheduled_by: str
+    notes: Optional[str] = None
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tag_id` | string | Yes | Tag ID to schedule |
+| `machine_id` | string | Yes | Machine ID |
+| `planned_date` | ISO date | Yes | Planned production date |
+| `shift` | Shift | Yes | Morning or Evening |
+| `planned_quantity_sqm` | float | Yes | Quantity to produce |
+| `scheduled_by` | string | Yes | User email |
+
+### ScheduleTagResponse (v1.3.0)
+
+Response payload for production scheduling API.
+
+```python
+class ScheduleTagResponse(BaseModel):
+    status: str  # OK, DUPLICATE, BLOCKED, ALREADY_PROCESSED
+    schedule_id: Optional[str] = None  # SCHED-0001
+    tag_id: Optional[str] = None
+    machine_id: Optional[str] = None
+    planned_date: Optional[str] = None
+    shift: Optional[str] = None
+    next_action_deadline: Optional[str] = None  # T-1 18:00
     trace_id: str
     message: Optional[str] = None
     exception_id: Optional[str] = None

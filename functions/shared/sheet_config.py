@@ -174,6 +174,8 @@ class ConfigKey(str, Enum):
     SEQ_REMNANT = "seq_remnant"
     SEQ_FILLER = "seq_filler"
     SEQ_TXN = "seq_txn"
+    SEQ_ACTION = "seq_action"  # User action log
+    SEQ_SCHEDULE = "seq_schedule"  # Production schedule
     
     # Business configuration
     MIN_REMNANT_AREA_M2 = "min_remnant_area_m2"
@@ -215,6 +217,8 @@ ID_PREFIXES = {
     ConfigKey.SEQ_REMNANT: "REM",
     ConfigKey.SEQ_FILLER: "FILL",
     ConfigKey.SEQ_TXN: "TXN",
+    ConfigKey.SEQ_ACTION: "ACT",
+    ConfigKey.SEQ_SCHEDULE: "SCHED",
 }
 
 
@@ -230,6 +234,7 @@ DEFAULT_CONFIG = {
     ConfigKey.SEQ_REMNANT: "0",
     ConfigKey.SEQ_FILLER: "0",
     ConfigKey.SEQ_TXN: "0",
+    ConfigKey.SEQ_ACTION: "0",
     
     # Business rules
     ConfigKey.MIN_REMNANT_AREA_M2: "0.5",

@@ -58,8 +58,9 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-# Output path
+# Output paths - save to both functions and function_adapter
 OUTPUT_PATH = Path(__file__).parent / "functions" / "workspace_manifest.json"
+OUTPUT_PATH_ADAPTER = Path(__file__).parent / "function_adapter" / "workspace_manifest.json"
 
 
 # ============== Physical to Logical Name Mapping ==============
@@ -69,18 +70,22 @@ SHEET_NAME_MAP = {
     # Root level
     "00 Reference Data": "REFERENCE_DATA",
     "00a Config": "CONFIG",
+    "00b Machine Master": "MACHINE_MASTER",
     
     # 01. Commercial and Demand
     "01 LPO Master LOG": "LPO_MASTER",
     "01 LPO Audit LOG": "LPO_AUDIT",
+    "01h LPO Ingestion": "01H_LPO_INGESTION",  # Staging sheet
     
     # 02. Tag Sheet Registry
     "Tag Sheet Registry": "TAG_REGISTRY",
     "Tag Sheet Registery": "TAG_REGISTRY",  # Handle typo in existing sheet
     "02 Tag Sheet Registry": "TAG_REGISTRY",
+    "02h Tag Sheet Staging": "02H_TAG_SHEET_STAGING",  # Staging sheet
     
     # 03. Production Planning
     "03 Production Planning": "PRODUCTION_PLANNING",
+    "03h Production Planning Staging": "03H_PRODUCTION_PLANNING_STAGING",  # Staging sheet
     "04 Nesting Execution Log": "NESTING_LOG",
     "05 Allocation Log": "ALLOCATION_LOG",
     
@@ -259,13 +264,19 @@ def process_sheet(sheet_info, manifest, folder_logical_name=None):
     columns_dict = {}
     for col in columns:
         col_logical = find_logical_column_name(logical_name, col["title"])
-        columns_dict[col_logical] = {
+        col_info = {
             "id": col["id"],
             "name": col["title"],
             "type": col.get("type", "TEXT_NUMBER"),
             "primary": col.get("primary", False),
             "index": col.get("index", 0),
         }
+        
+        # Include picklist options if available
+        if col.get("type") == "PICKLIST" and col.get("options"):
+            col_info["options"] = col["options"]
+        
+        columns_dict[col_logical] = col_info
     
     # Add to manifest
     manifest["sheets"][logical_name] = {
@@ -349,15 +360,21 @@ def main():
     for folder in workspace.get("folders", []):
         process_folder(folder, manifest)
     
-    # Save manifest
+    # Save manifest to both locations
     print("\n" + "-" * 60)
     print("Saving manifest...")
     
+    # Save to functions/
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
-    
     print(f"✓ Manifest saved to: {OUTPUT_PATH}")
+    
+    # Save to function_adapter/
+    OUTPUT_PATH_ADAPTER.parent.mkdir(parents=True, exist_ok=True)
+    with open(OUTPUT_PATH_ADAPTER, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+    print(f"✓ Manifest saved to: {OUTPUT_PATH_ADAPTER}")
     
     # Summary
     print("\n" + "=" * 60)

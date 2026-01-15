@@ -93,6 +93,12 @@ from .models import (
     LPOUpdateRequest,
     LPOIngestResponse,
     LPOUpdateResponse,
+    # Scheduling models (v1.3.0+)
+    Shift,
+    ScheduleStatus,
+    MachineStatus,
+    ScheduleTagRequest,
+    ScheduleTagResponse,
 )
 
 # Smartsheet client and exceptions
@@ -138,6 +144,8 @@ from .id_generator import (
     generate_next_remnant_id,
     generate_next_filler_id,
     generate_next_txn_id,
+    generate_next_action_id,
+    generate_next_schedule_id,
 )
 
 # Helpers

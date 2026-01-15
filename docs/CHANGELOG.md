@@ -18,6 +18,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-01-13
+
+### Added
+
+#### Production Scheduling Function
+- **`fn_schedule_tag`** - New function for production scheduling
+  - Endpoint: `POST /api/production/schedule`
+  - Tag validation (exists, not CANCELLED/CLOSED)
+  - LPO validation (exists, not ON_HOLD)
+  - **PO balance check** - Validates committed + planned ≤ PO quantity (5% tolerance)
+  - **Machine validation** - Checks machine exists and is OPERATIONAL
+  - Multiple tags allowed per machine/shift (no conflict blocking)
+  - **T-1 deadline calculation** - Returns nesting cutoff (18:00 previous day)
+  - Idempotency via `client_request_id`
+  - Full audit trail (Exception Log + User Action Log with JSON new_value)
+
+#### New Models
+- `Shift` enum - Morning, Evening
+- `ScheduleStatus` enum - Planned, Released for Nesting, Nesting Uploaded, Allocated, Cancelled, Delayed
+- `MachineStatus` enum - Operational, Maintenance
+- `ScheduleTagRequest` - Request model for scheduling
+- `ScheduleTagResponse` - Response model with schedule_id and next_action_deadline
+
+#### New Reason Codes
+- `MACHINE_NOT_FOUND` - Machine ID not found in Machine Master
+- `MACHINE_MAINTENANCE` - Machine is under maintenance
+- `CAPACITY_WARNING` - Planned quantity exceeds machine capacity (soft warning)
+- `DUPLICATE_SCHEDULE` - Tag already scheduled
+- `T1_NESTING_DELAY` - Nesting not uploaded by T-1 cutoff
+- `PLANNED_MISMATCH` - Planned qty differs from expected consumption
+- `TAG_NOT_FOUND` - Tag ID not found
+- `TAG_INVALID_STATUS` - Tag status is CANCELLED or CLOSED
+
+#### New Action Types
+- `SCHEDULE_CREATED` - Production schedule created
+- `SCHEDULE_UPDATED` - Production schedule updated
+- `SCHEDULE_CANCELLED` - Production schedule cancelled
+
+#### New Logical Names
+- `Sheet.MACHINE_MASTER` - Machine Master sheet reference
+- `Column.MACHINE_MASTER` - All Machine Master columns
+- `Column.PRODUCTION_PLANNING` - All Production Planning columns
+
+#### ID Generation
+- `generate_next_schedule_id()` - Generates SCHED-0001 format IDs
+- Added `SEQ_SCHEDULE` to ConfigKey enum
+
+### Changed
+- **`fetch_manifest.py`** - Now includes PICKLIST options in manifest
+  - Picklist/dropdown values available for validation
+- **`log_user_action()`** - Now returns action_id (ACT-0001 format)
+  - Added `ACTION_ID` column to User Action Log
+- **Attachment methods** - Fixed `attach_file_to_row()` rate limiter attribute
+
+### Fixed
+- Fixed `_rate_limiter` typo in `SmartsheetClient.attach_file_to_row()`
+- Fixed action ID generation (ACT-0001 format)
+- Fixed row_id retrieval from `add_row()` result (uses `id` not `row_id`)
+
+### Technical Debt Remediation
+- **Refactored `fn_ingest_tag`** - Now uses shared `create_exception()` and `log_user_action()` from `shared/audit.py`
+  - Removed 80+ lines of duplicate code
+  - Now generates sequence-based action IDs (ACT-0001)
+- **Refactored `fn_lpo_update`** - Now uses shared audit module
+  - Removed 60+ lines of duplicate code
+  - Consistent audit logging with all other functions
+- **All 4 functions now use shared audit module**:
+  - `fn_ingest_tag`, `fn_lpo_ingest`, `fn_lpo_update`, `fn_schedule_tag`
+
+### Tests Added
+- `test_schedule_models.py` - 14 unit tests for Shift, ScheduleStatus, MachineStatus enums and request/response models
+- `test_schedule_tag.py` - 14 integration tests for fn_schedule_tag (happy path, validation, machine checks, PO balance)
+- Updated `conftest.py` with MACHINE_MASTER and PRODUCTION_PLANNING mock sheets/columns
+- **Total test count: 221 (all passing)**
+
+
+---
+
 ## [1.2.0] - 2026-01-10
 
 ### Added
@@ -239,6 +317,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 1.3.0 | 2026-01-13 | Production scheduling function, machine validation, T-1 deadline calculation |
 | 1.2.0 | 2026-01-10 | LPO ingestion/update functions, multi-file support, SharePoint folder generation |
 | 1.1.0 | 2026-01-09 | Base64 file support, complete Tag Registry fields, PO balance fix |
 | 1.0.0 | 2026-01-08 | Full tag ingestion, test suite, documentation |
@@ -247,6 +326,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## Upgrade Notes
+
+### Upgrading to 1.3.0
+
+If upgrading from 1.2.0:
+
+1. **New endpoint available**:
+   - `POST /api/production/schedule` - Schedule tag for production
+
+2. **New Config sheet entries required**:
+   - `seq_action` - Sequence counter for User Action IDs (ACT-0001)
+   - `seq_schedule` - Sequence counter for Schedule IDs (SCHED-0001)
+
+3. **New sheets required**:
+   - `00b Machine Master` - Machine definitions with status
+   - `03 Production Planning` - Production schedules
+
+4. **Updated audit logging**:
+   - `log_user_action()` now returns `action_id` (ACT-0001 format)
+   - Existing integrations are compatible (return value can be ignored)
+
+5. **No breaking changes** - All existing integrations continue to work.
 
 ### Upgrading to 1.2.0
 

@@ -111,14 +111,15 @@ from shared import (
     get_manifest,
     # ID generation (sequence-based)
     generate_next_tag_id,
-    generate_next_exception_id,
     # Helpers
     generate_trace_id,
     compute_file_hash_from_url,
     compute_file_hash_from_base64,
-    calculate_sla_due,
     format_datetime_for_smartsheet,
     parse_float_safe,
+    # Audit (shared - DRY principle)
+    create_exception,
+    log_user_action,
 )
 
 # Get manifest for column name resolution
@@ -200,7 +201,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
             if existing_by_hash:
                 logger.warning(f"[{trace_id}] Duplicate file hash detected")
-                exception_id = _create_exception(
+                exception_id = create_exception(
                     client=client,
                     trace_id=trace_id,
                     reason_code=ReasonCode.DUPLICATE_UPLOAD,
@@ -208,7 +209,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     related_tag_id=existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME),
                     message=f"Duplicate file upload. Existing tag: {existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME)}"
                 )
-                _log_user_action(
+                log_user_action(
                     client=client,
                     user_id=request.uploaded_by,
                     action_type=ActionType.OPERATION_FAILED,
@@ -233,14 +234,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         lpo = _find_lpo(client, request)
         if lpo is None:
             logger.warning(f"[{trace_id}] LPO not found")
-            exception_id = _create_exception(
+            exception_id = create_exception(
                 client=client,
                 trace_id=trace_id,
                 reason_code=ReasonCode.LPO_NOT_FOUND,
                 severity=ExceptionSeverity.HIGH,
                 message=f"LPO not found: {request.lpo_sap_reference or request.customer_lpo_ref or request.lpo_id}"
             )
-            _log_user_action(
+            log_user_action(
                 client=client,
                 user_id=request.uploaded_by,
                 action_type=ActionType.OPERATION_FAILED,
@@ -267,14 +268,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         if lpo_status == LPOStatus.ON_HOLD.value:
             logger.warning(f"[{trace_id}] LPO is on hold")
-            exception_id = _create_exception(
+            exception_id = create_exception(
                 client=client,
                 trace_id=trace_id,
                 reason_code=ReasonCode.LPO_ON_HOLD,
                 severity=ExceptionSeverity.HIGH,
                 message=f"LPO {lpo.get(customer_lpo_ref_col)} is currently on hold"
             )
-            _log_user_action(
+            log_user_action(
                 client=client,
                 user_id=request.uploaded_by,
                 action_type=ActionType.OPERATION_FAILED,
@@ -309,7 +310,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         if request.required_area_m2 > remaining:
             logger.warning(f"[{trace_id}] Insufficient PO balance: required={request.required_area_m2}, remaining={remaining}")
-            exception_id = _create_exception(
+            exception_id = create_exception(
                 client=client,
                 trace_id=trace_id,
                 reason_code=ReasonCode.INSUFFICIENT_PO_BALANCE,
@@ -317,7 +318,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 quantity=request.required_area_m2,
                 message=f"Required: {request.required_area_m2} m², Available: {remaining} m²"
             )
-            _log_user_action(
+            log_user_action(
                 client=client,
                 user_id=request.uploaded_by,
                 action_type=ActionType.OPERATION_FAILED,
@@ -417,7 +418,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 logger.warning(f"[{trace_id}] Failed to attach file: {attach_error}")
         
         # 7. Log user action
-        _log_user_action(
+        log_user_action(
             client=client,
             user_id=request.uploaded_by,
             action_type=ActionType.TAG_CREATED,
@@ -507,84 +508,3 @@ def _find_lpo(client, request: TagIngestRequest) -> Optional[dict]:
     
     return None
 
-
-def _create_exception(
-    client,
-    trace_id: str,
-    reason_code: ReasonCode,
-    severity: ExceptionSeverity,
-    related_tag_id: Optional[str] = None,
-    related_txn_id: Optional[str] = None,
-    material_code: Optional[str] = None,
-    quantity: Optional[float] = None,
-    message: Optional[str] = None,
-) -> str:
-    """Create an exception record and return the exception_id."""
-    # Use sequence-based ID
-    exception_id = generate_next_exception_id(client)
-    sla_due = calculate_sla_due(severity)
-    
-    exception_data = {
-        Column.EXCEPTION_LOG.EXCEPTION_ID: exception_id,
-        Column.EXCEPTION_LOG.CREATED_AT: format_datetime_for_smartsheet(datetime.now()),
-        Column.EXCEPTION_LOG.SOURCE: ExceptionSource.INGEST.value,
-        Column.EXCEPTION_LOG.RELATED_TAG_ID: related_tag_id,
-        Column.EXCEPTION_LOG.RELATED_TXN_ID: related_txn_id,
-        Column.EXCEPTION_LOG.MATERIAL_CODE: material_code,
-        Column.EXCEPTION_LOG.QUANTITY: quantity,
-        Column.EXCEPTION_LOG.REASON_CODE: reason_code.value,
-        Column.EXCEPTION_LOG.SEVERITY: severity.value,
-        Column.EXCEPTION_LOG.STATUS: "Open",
-        Column.EXCEPTION_LOG.SLA_DUE: format_datetime_for_smartsheet(sla_due),
-        Column.EXCEPTION_LOG.RESOLUTION_ACTION: message,
-    }
-    
-    record_created = False
-    try:
-        client.add_row(Sheet.EXCEPTION_LOG, exception_data)
-        logger.info(f"[{trace_id}] Exception created: {exception_id}")
-        record_created = True
-    except Exception as e:
-        logger.error(f"[{trace_id}] Failed to create exception record: {e}")
-    
-    # Return ID with suffix indicating if record was saved
-    # This helps callers know whether the exception was actually logged
-    if not record_created:
-        exception_id = f"{exception_id}-UNSAVED"
-    
-    return exception_id
-
-
-def _log_user_action(
-    client,
-    user_id: str,
-    action_type: ActionType,
-    target_table: str,
-    target_id: str,
-    old_value: Optional[str] = None,
-    new_value: Optional[str] = None,
-    notes: Optional[str] = None,
-    trace_id: Optional[str] = None,
-):
-    """Log a user action to the audit trail."""
-    import uuid
-    
-    action_data = {
-        Column.USER_ACTION_LOG.ACTION_ID: str(uuid.uuid4()),
-        Column.USER_ACTION_LOG.TIMESTAMP: format_datetime_for_smartsheet(datetime.now()),
-        Column.USER_ACTION_LOG.USER_ID: user_id,
-        Column.USER_ACTION_LOG.ACTION_TYPE: action_type.value,
-        Column.USER_ACTION_LOG.TARGET_TABLE: target_table,
-        Column.USER_ACTION_LOG.TARGET_ID: target_id,
-        Column.USER_ACTION_LOG.OLD_VALUE: old_value,
-        Column.USER_ACTION_LOG.NEW_VALUE: new_value,
-        Column.USER_ACTION_LOG.NOTES: notes or f"Trace: {trace_id}",
-    }
-    
-    try:
-        client.add_row(Sheet.USER_ACTION_LOG, action_data)
-        logger.info(f"[{trace_id}] User action logged: {action_type.value}")
-    except Exception as e:
-        # Log the failure but don't raise - audit logging shouldn't block main operations
-        # However, logging this at ERROR level ensures it's captured for monitoring
-        logger.error(f"[{trace_id}] Failed to log user action: {e}. Action: {action_type.value}, Target: {target_id}")

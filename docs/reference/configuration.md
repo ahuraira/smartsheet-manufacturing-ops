@@ -33,6 +33,14 @@ This document provides a complete reference of all configuration options in the 
 | `FUNCTIONS_WORKER_RUNTIME` | Azure Functions runtime | `python` |
 | `AzureWebJobsStorage` | Storage connection | Required for Azure |
 
+### Webhook Variables (function_adapter)
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `WEBHOOK_CALLBACK_URL` | Public URL for Smartsheet webhook callbacks | `https://my-func.azurewebsites.net/api/webhooks/receive` |
+| `SERVICEBUS_CONNECTION` | Azure Service Bus connection string | `Endpoint=sb://...` |
+| `SERVICEBUS_QUEUE_NAME` | Queue name for events | `smartsheet-events` |
+
 ### Setting Environment Variables
 
 #### Local Development (local.settings.json)

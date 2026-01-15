@@ -739,6 +739,87 @@ class SmartsheetClient:
         logger.info(f"Attached file '{file_name}' to row {row_id} in sheet {sheet_id}")
         return result.get("result", {})
     
+    # ============== Attachment Methods ==============
+    
+    @retry_with_backoff()
+    def attach_file_to_row(
+        self, 
+        sheet_ref: Union[str, int], 
+        row_id: int, 
+        file_content: str, 
+        file_name: str = "attachment"
+    ) -> Dict[str, Any]:
+        """
+        Attach base64-encoded file content to a row.
+        
+        Args:
+            sheet_ref: Sheet reference (logical name, physical name, or ID)
+            row_id: Row ID to attach to
+            file_content: Base64-encoded file content
+            file_name: Name for the attachment
+            
+        Returns:
+            Attachment response from Smartsheet API
+        """
+        import base64
+        
+        sheet_id = self.resolve_sheet_id(sheet_ref)
+        file_bytes = base64.b64decode(file_content)
+        
+        url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}/attachments"
+        
+        # Smartsheet attachment API requires multipart/form-data
+        self._rate_limiter.wait()
+        response = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            files={
+                'file': (file_name, file_bytes, 'application/octet-stream')
+            }
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"Attached file '{file_name}' to row {row_id}")
+            return response.json().get("result", {})
+        else:
+            logger.error(f"Failed to attach file: {response.status_code} - {response.text}")
+            return {}
+    
+    @retry_with_backoff()
+    def attach_url_to_row(
+        self, 
+        sheet_ref: Union[str, int], 
+        row_id: int, 
+        file_url: str, 
+        attachment_name: str = "attachment"
+    ) -> Dict[str, Any]:
+        """
+        Attach a URL as a link attachment to a row.
+        
+        Args:
+            sheet_ref: Sheet reference (logical name, physical name, or ID)
+            row_id: Row ID to attach to
+            file_url: URL to attach
+            attachment_name: Display name for the attachment
+            
+        Returns:
+            Attachment response from Smartsheet API
+        """
+        sheet_id = self.resolve_sheet_id(sheet_ref)
+        url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}/attachments"
+        
+        payload = {
+            "attachmentType": "LINK",
+            "url": file_url,
+            "name": attachment_name
+        }
+        
+        result = self._make_request("POST", url, json=payload)
+        logger.info(f"Attached URL '{attachment_name}' to row {row_id}")
+        return result.get("result", {})
+    
     def refresh_caches(self):
         """Clear all caches and force reload."""
         with self._sheet_name_to_id_lock:

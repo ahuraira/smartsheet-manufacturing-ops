@@ -67,14 +67,14 @@ from shared import (
     # Manifest
     get_manifest,
     
-    # ID generation
-    generate_next_exception_id,
-    
     # Helpers
     generate_trace_id,
-    calculate_sla_due,
     format_datetime_for_smartsheet,
     parse_float_safe,
+    
+    # Audit (shared - DRY principle)
+    create_exception,
+    log_user_action,
 )
 
 
@@ -132,14 +132,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         if not existing_lpo:
             logger.warning(f"[{trace_id}] LPO not found: {request.sap_reference}")
-            exception_id = _create_exception(
+            exception_id = create_exception(
                 client=client,
                 trace_id=trace_id,
                 reason_code=ReasonCode.SAP_REF_NOT_FOUND,
                 severity=ExceptionSeverity.MEDIUM,
                 message=f"SAP Reference not found: {request.sap_reference}"
             )
-            _log_user_action(
+            log_user_action(
                 client=client,
                 user_id=request.updated_by,
                 action_type=ActionType.OPERATION_FAILED,
@@ -171,14 +171,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             
             if request.po_quantity_sqm < current_delivered:
                 logger.warning(f"[{trace_id}] PO quantity conflict: new={request.po_quantity_sqm}, delivered={current_delivered}")
-                exception_id = _create_exception(
+                exception_id = create_exception(
                     client=client,
                     trace_id=trace_id,
                     reason_code=ReasonCode.PO_QUANTITY_CONFLICT,
                     severity=ExceptionSeverity.HIGH,
                     message=f"Cannot reduce PO quantity below delivered amount. Requested: {request.po_quantity_sqm}, Delivered: {current_delivered}"
                 )
-                _log_user_action(
+                log_user_action(
                     client=client,
                     user_id=request.updated_by,
                     action_type=ActionType.OPERATION_FAILED,
@@ -287,7 +287,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logger.info(f"[{trace_id}] LPO updated: {request.sap_reference}")
         
         # 6. Log user action with old/new values
-        _log_user_action(
+        log_user_action(
             client=client,
             user_id=request.updated_by,
             action_type=ActionType.LPO_UPDATED,
@@ -324,63 +324,3 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json"
         )
 
-
-def _create_exception(
-    client,
-    trace_id: str,
-    reason_code: ReasonCode,
-    severity: ExceptionSeverity,
-    message: Optional[str] = None,
-) -> str:
-    """Create an exception record and return the exception_id."""
-    exception_id = generate_next_exception_id(client)
-    now = datetime.now()
-    
-    exception_data = {
-        Column.EXCEPTION_LOG.EXCEPTION_ID: exception_id,
-        Column.EXCEPTION_LOG.CREATED_AT: format_datetime_for_smartsheet(now),
-        Column.EXCEPTION_LOG.SOURCE: ExceptionSource.INGEST.value,
-        Column.EXCEPTION_LOG.REASON_CODE: reason_code.value,
-        Column.EXCEPTION_LOG.SEVERITY: severity.value,
-        Column.EXCEPTION_LOG.STATUS: "Open",
-        Column.EXCEPTION_LOG.SLA_DUE: format_datetime_for_smartsheet(calculate_sla_due(severity, now)),
-        Column.EXCEPTION_LOG.RESOLUTION_ACTION: message,
-    }
-    
-    try:
-        client.add_row(Sheet.EXCEPTION_LOG, exception_data)
-        logger.info(f"[{trace_id}] Exception created: {exception_id}")
-    except Exception as e:
-        logger.error(f"[{trace_id}] Failed to create exception: {e}")
-    
-    return exception_id
-
-
-def _log_user_action(
-    client,
-    user_id: str,
-    action_type: ActionType,
-    target_table: str,
-    target_id: str,
-    old_value: Optional[str] = None,
-    new_value: Optional[str] = None,
-    notes: Optional[str] = None,
-    trace_id: Optional[str] = None,
-):
-    """Log a user action to the audit trail."""
-    action_data = {
-        Column.USER_ACTION_LOG.TIMESTAMP: format_datetime_for_smartsheet(datetime.now()),
-        Column.USER_ACTION_LOG.USER_ID: user_id,
-        Column.USER_ACTION_LOG.ACTION_TYPE: action_type.value,
-        Column.USER_ACTION_LOG.TARGET_TABLE: target_table if isinstance(target_table, str) else "LPO_MASTER",
-        Column.USER_ACTION_LOG.TARGET_ID: target_id,
-        Column.USER_ACTION_LOG.OLD_VALUE: old_value,
-        Column.USER_ACTION_LOG.NEW_VALUE: new_value,
-        Column.USER_ACTION_LOG.NOTES: notes or f"Trace: {trace_id}",
-    }
-    
-    try:
-        client.add_row(Sheet.USER_ACTION_LOG, action_data)
-        logger.info(f"[{trace_id}] User action logged: {action_type.value}")
-    except Exception as e:
-        logger.error(f"[{trace_id}] Failed to log user action: {e}")

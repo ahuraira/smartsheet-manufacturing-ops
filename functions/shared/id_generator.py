@@ -276,3 +276,15 @@ def generate_next_filler_id(client) -> str:
 def generate_next_txn_id(client) -> str:
     """Generate next Transaction ID (e.g., TXN-0001)."""
     return SequenceGenerator(client).next_id(ConfigKey.SEQ_TXN)
+
+
+def generate_next_action_id(client) -> str:
+    """Generate next User Action ID (e.g., ACT-0001)."""
+    return SequenceGenerator(client).next_id(ConfigKey.SEQ_ACTION)
+
+
+def generate_next_schedule_id(client) -> str:
+    """Generate next Production Schedule ID (e.g., SCHED-0001)."""
+    return SequenceGenerator(client).next_id(ConfigKey.SEQ_SCHEDULE)
+
+
