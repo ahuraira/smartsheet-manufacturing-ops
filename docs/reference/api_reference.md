@@ -1,6 +1,6 @@
 # 📘 API Reference
 
-> **Document Type:** Reference | **Version:** 1.0.0 | **Last Updated:** 2026-01-08
+> **Document Type:** Reference | **Version:** 1.3.1 | **Last Updated:** 2026-01-18
 
 This document provides complete API documentation for all Azure Functions endpoints in the Ducts Manufacturing Inventory Management System.
 
@@ -17,6 +17,7 @@ This document provides complete API documentation for all Azure Functions endpoi
    - [LPO Ingestion](#lpo-ingestion-v120) (v1.2.0)
    - [LPO Update](#lpo-update-v120) (v1.2.0)
    - [Production Scheduling](#production-scheduling-v130) (v1.3.0)
+   - [Nesting Parser](#nesting-parser-v131) (v1.3.1)
 6. [Webhook Management](#webhook-management-function_adapter) (function_adapter)
 7. [Error Handling](#error-handling)
 8. [Data Models](#data-models)
@@ -702,6 +703,173 @@ Content-Type: application/json
   "message": "Machine CUT-001 is under maintenance"
 }
 ```
+
+---
+
+### Nesting Parser (v1.3.1)
+
+Parses Eurosoft CutExpert nesting export files and extracts structured data for inventory, consumption, and production tracking.
+
+#### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant C as 📱 Client
+    participant F as ☁️ fn_parse_nesting
+    
+    C->>F: POST /api/nesting/parse (file)
+    
+    F->>F: Validate File
+    alt Invalid File
+        F-->>C: 400 Bad Request
+    end
+    
+    F->>F: Extract Tag ID
+    alt Missing Tag ID
+        F-->>C: 200 ERROR
+    end
+    
+    F->>F: Parse Sheets
+    F->>F: Extract Data
+    F-->>C: 200 OK (parsed data)
+```
+
+#### Request
+
+```http
+POST /api/nesting/parse
+Content-Type: multipart/form-data
+```
+
+#### Request Body
+
+```
+file: <binary Excel file (.xls/.xlsx)>
+```
+
+Or with base64:
+
+```json
+{
+  "file_content": "base64-encoded-excel-content",
+  "file_name": "TAG-1234_nesting_export.xlsx"
+}
+```
+
+#### Sheets Parsed
+
+| Sheet | Data Extracted |
+|-------|----------------|
+| `Project parameters` | Tag ID, material spec, thickness, inventory impact |
+| `Panels info` | Sheet utilization, waste metrics, remnant area |
+| `Flanges` | Profile consumption (U, F, H), lengths, remainders |
+| `Other components` | Consumables: silicone, tape, glue (with extra %) |
+| `Machine info` | Telemetry: cut lengths, travel distance, times |
+| `Delivery order` | Finished goods line items, geometry, quantities |
+
+#### Response: Success (200)
+
+```json
+{
+  "status": "SUCCESS",
+  "tag_id": "TAG-1234",
+  "data": {
+    "meta_data": {
+      "project_ref_id": "TAG-1234",
+      "project_name": "Order ABC",
+      "validation_status": "OK"
+    },
+    "raw_material_panel": {
+      "material_spec_name": "PIR 25mm",
+      "thickness_mm": 25.0,
+      "inventory_impact": {
+        "utilized_sheets_count": 5,
+        "net_reusable_remnant_area_m2": 1.25
+      },
+      "efficiency_metrics": {
+        "nesting_waste_m2": 0.45
+      }
+    },
+    "profiles_and_flanges": [
+      {
+        "profile_type": "U PROFILE",
+        "total_length_m": 45.5,
+        "remaining_m": 2.3
+      }
+    ],
+    "consumables": {
+      "silicone": {
+        "consumption_kg": 0.85,
+        "extra_pct": 5.0
+      },
+      "aluminum_tape": {
+        "consumption_m": 12.5,
+        "extra_pct": 3.0
+      }
+    },
+    "flange_accessories": {
+      "gi_corners_qty": 24,
+      "gi_corners_cost_aed": 48.0,
+      "pvc_corners_qty": 16,
+      "pvc_corners_cost_aed": 32.0
+    },
+    "machine_telemetry": {
+      "blade_wear_45_m": 15.2,
+      "blade_wear_90_m": 28.4,
+      "gantry_travel_rapid_m": 156.8,
+      "time_2x45_cuts_sec": 45
+    },
+    "delivery_order_items": [
+      {
+        "line_id": "1",
+        "description": "Duct Section A",
+        "qty_produced": 10,
+        "area_m2": 5.5,
+        "length_m": 2.0,
+        "geometry": {
+          "mouth_a_x": 400,
+          "mouth_a_y": 300
+        }
+      }
+    ]
+  },
+  "warnings": [],
+  "trace_id": "trace-abc123def456"
+}
+```
+
+#### Response: Partial (200)
+
+When some sheets are missing or have extraction issues:
+
+```json
+{
+  "status": "PARTIAL",
+  "tag_id": "TAG-1234",
+  "data": { ... },
+  "warnings": [
+    "Sheet 'Machine info' not found",
+    "Could not extract 'flange_accessories'"
+  ],
+  "trace_id": "trace-abc123def456"
+}
+```
+
+#### Response: Error (200)
+
+When critical data is missing (e.g., Tag ID):
+
+```json
+{
+  "status": "ERROR",
+  "tag_id": null,
+  "error_message": "Missing Tag ID in PROJECT REFERENCE or PROJECT NAME",
+  "validation_errors": ["Tag ID is required"],
+  "trace_id": "trace-abc123def456"
+}
+```
+
+> **Note:** The function returns 200 even for parsing errors to provide detailed JSON response. The `status` field indicates SUCCESS, PARTIAL, or ERROR.
 
 ---
 

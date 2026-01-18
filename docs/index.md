@@ -1,6 +1,6 @@
 # 📚 Ducts Manufacturing Inventory Management - Documentation Hub
 
-> **Version:** 1.3.0 | **Last Updated:** 2026-01-13 | **Status:** Active Development
+> **Version:** 1.3.1 | **Last Updated:** 2026-01-18 | **Status:** Active Development
 
 Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory Management System. This documentation follows the [Diátaxis framework](https://diataxis.fr/) to organize content by user needs: **Tutorials**, **How-to Guides**, **Reference**, and **Explanation**.
 
@@ -43,6 +43,7 @@ Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory
 | [Data Structure Specification](../Specifications/data_strucutre_specification.md) | Data governance and schema | Developers, DBAs |
 | [Tag Ingestion Architecture](../Specifications/tag_ingestion_architecture.md) | Tag ingestion flow details | Developers |
 | [LPO Ingestion Architecture](../Specifications/lpo_ingestion_architecture.md) | LPO ingestion flow details | Developers |
+| [Nesting Parser Specification](../Specifications/nesting_parser_speccification.md) | Nesting file parsing details | Developers |
 | [Flow Architecture](../Specifications/flow_architecture.md) | Power Automate flow design | Developers, BA |
 
 ### 📋 Project Management
@@ -112,6 +113,7 @@ Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory
 │   ├── 📂 fn_lpo_ingest/        # LPO ingestion function (v1.2.0)
 │   ├── 📂 fn_lpo_update/        # LPO update function (v1.2.0)
 │   ├── 📂 fn_schedule_tag/      # Production scheduling (v1.3.0)
+│   ├── 📂 fn_parse_nesting/     # Nesting file parser (v1.3.1)
 │   ├── 📂 shared/               # Shared modules
 │   └── 📂 tests/                # Test suite
 ├── 📂 function_adapter/         # ⚡ Azure Functions (Webhooks)

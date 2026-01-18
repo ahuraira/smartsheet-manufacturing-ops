@@ -1,6 +1,6 @@
 # 📊 Data Dictionary
 
-> **Document Type:** Reference | **Version:** 1.0.0 | **Last Updated:** 2026-01-08
+> **Document Type:** Reference | **Version:** 1.3.1 | **Last Updated:** 2026-01-18
 
 This document provides a complete reference of all data models, sheets, and column definitions used in the Ducts Manufacturing Inventory Management System.
 
@@ -457,6 +457,70 @@ class ScheduleTagResponse(BaseModel):
     message: Optional[str] = None
     exception_id: Optional[str] = None
 ```
+
+### FlangeAccessories (v1.3.1)
+
+Accessories extracted from the Flanges sheet.
+
+```python
+class FlangeAccessories(BaseModel):
+    gi_corners_qty: int = 0
+    gi_corners_cost_aed: float = 0.0
+    pvc_corners_qty: int = 0
+    pvc_corners_cost_aed: float = 0.0
+```
+
+### Consumables (v1.3.1)
+
+Consumables with extra allowance percentages.
+
+```python
+class ConsumableItem(BaseModel):
+    consumption: float = 0.0  # kg or m
+    extra_pct: float = 0.0  # Extra allowance %
+
+class Consumables(BaseModel):
+    silicone: ConsumableItem
+    aluminum_tape: ConsumableItem
+    glue_junction: ConsumableItem
+    glue_flange: ConsumableItem
+```
+
+### MachineTelemetry (v1.3.1)
+
+Machine usage metrics for predictive maintenance.
+
+```python
+class MachineTelemetry(BaseModel):
+    blade_wear_45_m: float = 0.0
+    blade_wear_90_m: float = 0.0
+    gantry_travel_rapid_m: float = 0.0
+    time_2x45_cuts_sec: Optional[int] = None  # v1.3.1
+```
+
+### NestingParseResult (v1.3.1)
+
+Complete result from nesting file parsing.
+
+```python
+class NestingParseResult(BaseModel):
+    status: str  # SUCCESS, PARTIAL, ERROR
+    tag_id: Optional[str] = None
+    data: Optional[NestingData] = None
+    warnings: List[str] = []
+    validation_errors: List[str] = []
+    error_message: Optional[str] = None
+    trace_id: str
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | SUCCESS, PARTIAL, or ERROR |
+| `tag_id` | string | Extracted Tag ID |
+| `data` | NestingData | Parsed data structure |
+| `warnings` | List[str] | Non-critical issues |
+| `validation_errors` | List[str] | Critical validation failures |
+| `trace_id` | string | Request trace ID |
 
 ### ExceptionRecord
 

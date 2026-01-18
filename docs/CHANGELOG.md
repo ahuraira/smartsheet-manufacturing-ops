@@ -18,6 +18,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.1] - 2026-01-18
+
+### Added
+
+#### Nesting Parser Improvements (`fn_parse_nesting`)
+- **Flange Accessories Extraction** - Added support for extracting accessories from "Flanges" sheet:
+  - GI Corners (Quantity & Cost)
+  - PVC Corners (Quantity & Cost)
+- **Complex Consumables Layout** - Enhanced `OtherComponentsExtractor` to handle side-by-side layout:
+  - Left column area: Silicone, Aluminum Tape
+  - Right column area: Junction Glue, Flange Glue
+  - Robust anchor-based extraction for all consumable types
+- **Machine Telemetry** - Added extraction of `Time for 2x45° cuts` from Project Parameters
+- **Extra Allowance Extraction** - Now captures "Extra" allowance percentages for all consumables
+- **Finished Goods Geometry** - Fixed `length_m` extraction (converts mm to meters)
+
+#### New Models
+- `FlangeAccessories` - Data model for corners and other flange accessories
+- Updated `Consumables` - Added `extra_pct` fields for silicone, tape, and glues
+- Updated `MachineTelemetry` - Added `time_2x45_cuts_sec` field
+
+#### Validation & Robustness
+- **Anchor-Based Extraction** - All new fields use robust anchor text search instead of hardcoded cell references
+- **Unit Awareness** - Extractor now correctly identifies units (Kg, mt., AED) to find associated values
+
+### Fixed
+- Fixed `profiles_and_flanges` extraction to correctly identify all profile blocks in "Flanges" sheet
+- Fixed "Total length" extraction for profiles using anchor-based search (no more hardcoded offsets)
+- Fixed `DeliveryOrderExtractor` to handle multi-row headers for MOUTH A/B geometry and improved header detection using fuzzy matching
+- Fixed critical bug in `SmartsheetClient` where duplicate method definitions caused parameter shadowing
+
+### Changed
+- **Strict Identity Validation** - Missing Tag ID/Reference now triggers a CRITICAL ERROR instead of a warning, preventing invalid data ingestion
+
+### Tests Added
+- **`test_anchor_finder.py`** - 19 unit tests for Anchor & Offset strategy:
+  - Basic anchor finding (exact, partial, case-insensitive)
+  - Value extraction with type casting (string, float, int)
+  - **Shifted file handling** (3+ rows inserted at top - critical spec requirement)
+  - Multiple anchor detection for block iteration
+  - Table extraction and header row detection
+- **`test_extractors.py`** - 15 unit tests for sheet extractors:
+  - ProjectParametersExtractor (identity, material, inventory, waste, telemetry)
+  - Tag ID fallback logic (REFERENCE → NAME → UNKNOWN)
+  - MachineInfoExtractor (cut lengths, times)
+  - Missing/partial data handling
+- **`test_nesting_parser.py`** - 16 integration tests for full parser:
+  - Happy path (complete workbook parsing)
+  - SUCCESS vs PARTIAL vs ERROR status determination
+  - Missing sheets → PARTIAL with warnings
+  - Missing Tag ID → ERROR (strict validation)
+  - Shifted file → still extracts correctly
+  - JSON serialization and numeric precision
+- **Total test count: 295 (all passing)**
+
+---
+
 ## [1.3.0] - 2026-01-13
 
 ### Added
@@ -317,6 +374,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 1.3.1 | 2026-01-18 | Nesting parser: flange accessories, consumables extraction, anchor-based robustness |
 | 1.3.0 | 2026-01-13 | Production scheduling function, machine validation, T-1 deadline calculation |
 | 1.2.0 | 2026-01-10 | LPO ingestion/update functions, multi-file support, SharePoint folder generation |
 | 1.1.0 | 2026-01-09 | Base64 file support, complete Tag Registry fields, PO balance fix |
