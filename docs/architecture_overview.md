@@ -150,6 +150,7 @@ flowchart TB
             FN7[fn_lpo_ingest]
             FN8[fn_schedule_tag]
             FN9[fn_parse_nesting]
+            FN10[fn_event_dispatcher]
             FN3[fn_allocate]
             FN4[fn_pick_confm]
             FN5[fn_consume]

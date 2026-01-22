@@ -20,7 +20,7 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 CONNECTION_STRING = os.getenv("SERVICE_BUS_CONNECTION")
-QUEUE_NAME = os.getenv("SERVICE_BUS_QUEUE_NAME", "event-main")
+QUEUE_NAME = os.getenv("SERVICE_BUS_QUEUE_NAME", "events-main")
 
 # Max retry settings
 MAX_RETRIES = 3

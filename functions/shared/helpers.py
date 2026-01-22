@@ -182,38 +182,73 @@ def generate_lpo_folder_path(
     base_url: Optional[str] = None
 ) -> str:
     """
-    Generate canonical SharePoint folder path for LPO.
+    Generate canonical folder path for LPO (relative path for Power Automate).
     
-    Format: {base_url}/LPOs/{sap_reference}_{customer_name}/
+    Format: LPOs/{sap_reference}_{customer_name}
     
     Args:
         sap_reference: SAP reference number (e.g., PTE-185)
         customer_name: Customer name
-        base_url: SharePoint document library URL (optional, uses env var if not provided)
+        base_url: DEPRECATED - no longer used (path is relative)
     
     Returns:
-        Full folder path URL
+        Relative folder path (e.g., "LPOs/PTE-185_Acme_Corp")
     
     Example:
         >>> generate_lpo_folder_path("PTE-185", "Acme Corp")
-        "https://.../Shared Documents/LPOs/PTE-185_Acme_Corp"
+        "LPOs/PTE-185_Acme_Corp"
+    """
+    # Sanitize names for folder path
+    safe_customer = sanitize_folder_name(customer_name)
+    safe_sap = sanitize_folder_name(sap_reference)
+    
+    # Build relative path (Power Automate/SharePoint will handle encoding)
+    folder_name = f"{safe_sap}_{safe_customer}"
+    return f"LPOs/{folder_name}"
+
+
+def generate_lpo_folder_url(
+    sap_reference: str,
+    customer_name: str,
+    base_url: Optional[str] = None
+) -> str:
+    """
+    Generate properly encoded SharePoint URL for LPO folder.
+    
+    This URL is safe to store in Smartsheet and will be clickable.
+    Uses URL encoding as per SharePoint/Power Automate requirements.
+    
+    Args:
+        sap_reference: SAP reference number (e.g., PTE-185)
+        customer_name: Customer name
+        base_url: SharePoint document library base URL (uses env var if not provided)
+    
+    Returns:
+        Full encoded URL (e.g., "https://tenant.sharepoint.com/sites/.../LPOs/PTE-185_Acme%20Corp")
+    
+    Example:
+        >>> generate_lpo_folder_url("PTE-185", "Acme Corp")
+        "https://algurguae.sharepoint.com/sites/DuctsFabricationPlant/Ducts/LPOs/PTE-185_Acme_Corp"
     """
     import os
+    from urllib.parse import quote
     
     # Get base URL from env if not provided
     if not base_url:
         base_url = os.environ.get(
-            "SHAREPOINT_BASE_URL", 
-            "https://your-tenant.sharepoint.com/sites/Ducts/Shared Documents"
+            "SHAREPOINT_BASE_URL",
+            "https://algurguae.sharepoint.com/sites/DuctsFabricationPlant/Ducts"
         )
     
-    # Sanitize customer name for folder path
-    safe_customer = sanitize_folder_name(customer_name)
-    safe_sap = sanitize_folder_name(sap_reference)
+    # Get relative path
+    relative_path = generate_lpo_folder_path(sap_reference, customer_name)
     
-    # Build path
-    folder_name = f"{safe_sap}_{safe_customer}"
-    return f"{base_url.rstrip('/')}/LPOs/{folder_name}"
+    # URL encode the path (safe='/' keeps slashes unencoded)
+    # This matches SharePoint's encodeUriComponent behavior
+    encoded_path = quote(relative_path, safe='/')
+    
+    # Build full URL
+    return f"{base_url.rstrip('/')}/{encoded_path}"
 
 
 def generate_lpo_subfolder_paths(lpo_folder_path: str) -> Dict[str, str]:

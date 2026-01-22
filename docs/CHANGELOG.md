@@ -18,9 +18,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.3.1] - 2026-01-18
+## [1.5.0] - 2026-01-22
 
 ### Added
+- **`fn_parse_nesting` Orchestration** (v2.0.0) - Full SOTA implementation:
+  - **Orchestration Layer**: Handles validation, parsing, logging, and exception creation.
+  - **Idempotency**: Prevents duplicate processing via `client_request_id` and `file_hash` checks.
+  - **Fail-Fast Validation**: Verifies Tag ID existence and LPO ownership before parsing.
+  - **Smartsheet Integration**: Logs execution to `NESTING_LOG`, attaches files, and updates `TAG_REGISTRY`.
+  - **Authoritative Exception Handling**: Creates exceptions in `99 Exception Log` using shared module.
+- **`validation.py`** - New module for robust nesting validation logic:
+  - `validate_tag_exists`, `validate_tag_lpo_ownership`, `check_duplicate_file`.
+  - Safe column value lookup using logical-to-physical mapping.
+- **`nesting_logger.py`** - New module for specialized Smartsheet logging operations.
+- **`config.py`** - Configuration loader for nesting-specific settings (`nesting_config.json`).
+- **`test_nesting_validation.py`** - Comprehensive unit and integration tests.
+
+### Changed
+- **`fn_parse_nesting/__init__.py`** - Rewritten to serve as the main orchestrator (previously just a parser wrapper).
+- **`functions/tests/conftest.py`** - Added `NESTING_LOG` to mock manifest for testing.
+
+### Fixed (Robustness Hardening)
+- **Duplicate Tag Safety**: `validate_tag_exists` now detects duplicate Tag IDs and fails safely (prevents ambiguous updates).
+- **User Validation**: `uploaded_by` falls back to default admin email if input is invalid/system (ensures API calls succeed).
+- **Unit Tests**: Added test case for duplicate tag detection logic.
+
+## [1.4.2] - 2026-01-22
+
+### Fixed
+- **Service Bus queue name** - Aligned `events-main` across all configs
+- **Routing table reference** - Fixed dict reference issue with `.clear()`
+- **LPO Handler** - Extracts ALL fields (wastage_pct, terms, remarks) and row attachments
+
+### Added
+- **`get_row_attachments()`** - SmartsheetClient fetches row attachments
+- **`get_user_email()`** - Resolves Smartsheet user ID → email (cached)
+- **SOTA Exception Handling** - All handlers/functions log exceptions with `exception_id`
+  - ValidationError catch in handlers, returns `EXCEPTION_LOGGED` → HTTP 200
+- **Resilient RowEvent model** - Type coercion validators for all fields
+- **3 new antigravity.md rules** - Exception handling best practices
+
+### Tests
+- **Smartsheet Client**: Added unit tests for `get_row_attachments` and `get_user_email` (with mock HTTP buffering).
+- **LPO Handler**: Added validation tests for extraction of optional fields (wastage, terms) and attachment processing.
+- **Resiliency**: Added unit tests for `RowEvent` type coercion (string/float/int) and Enum robustness.
+
+
+---
+
+## [1.4.0] - 2026-01-20
+
+### Added
+- **`fn_event_dispatcher`** - Central event router (`POST /api/events/process-row`)
+  - Routes Smartsheet events to `fn_lpo_ingest`, `fn_ingest_tag`, etc.
+  - ID-based routing (immune to sheet/column renames)
+- **`event_routing.json`** - Externalized routing config (edit routes without code changes)
+- **`LPO_SUBFOLDERS`** env var - Configurable folder structure
+- **`SmartsheetClient.get_row()`** - New method for ID-based single row fetch
+- **`shared/event_utils.py`** - Shared utilities for event processing:
+  - `get_cell_value_by_logical_name()` - ID-based cell value extraction
+  - `get_cell_value_by_column_id()` - Direct column ID access
+
+### Changed
+- Refactored `lpo_handler.py` and `tag_handler.py` to use shared `event_utils` (DRY)
+
+### Tests Added
+- **`test_event_dispatcher_models.py`** - 18 unit tests for Pydantic models:
+  - `EventAction`, `ObjectType` enums
+  - `RowEvent` model validation (required fields, defaults)
+  - `RouteConfig`, `SheetRoute`, `HandlerConfig` models
+  - `RoutingConfig` JSON parsing
+- **`test_event_router.py`** - 11 unit tests for ID-based routing:
+  - Config loading from `event_routing.json`
+  - Routing table construction with mock manifest
+  - Handler lookup by sheet_id + action
+  - Disabled action handling
+- **`test_event_utils.py`** - 9 unit tests for cell extraction:
+  - `get_cell_value_by_column_id()` - direct ID lookup
+  - `get_cell_value_by_logical_name()` - manifest-based lookup
+- **`test_power_automate.py`** - 17 unit tests for FlowClient:
+  - Environment variable configuration
+  - Fire-and-forget timeout handling (success on timeout)
+  - Connection error, HTTP error handling
+  - Singleton pattern
+- **Total: 350 tests (all passing)**
+
+---
+
+## [1.3.1] - 2026-01-19
+
+### Added
+
+#### Power Automate Integration (`shared/power_automate.py`)
+- **FlowClient** - Shared client for calling Power Automate HTTP trigger flows:
+  - Connection pooling via `requests.Session`
+  - Automatic retry with exponential backoff (configurable)
+  - Fire-and-forget pattern for async operations
+  - Comprehensive error handling and structured logging
+  - Timeout configuration (connect/read separately)
+- **`trigger_create_lpo_folders()`** - Convenience function for LPO folder creation
+- **Environment Variables** - New settings for flow configuration:
+  - `POWER_AUTOMATE_CREATE_FOLDERS_URL` - Flow HTTP trigger URL
+  - `FLOW_FIRE_AND_FORGET` - Enable async mode (default: true)
+  - `FLOW_CONNECT_TIMEOUT`, `FLOW_READ_TIMEOUT`, `FLOW_MAX_RETRIES`
+
+#### LPO Ingestion Enhancement (`fn_lpo_ingest`)
+- **Automatic Folder Creation** - Triggers Power Automate flow after LPO creation:
+  - Fire-and-forget pattern - LPO creation succeeds even if flow fails
+  - Response includes `folder_creation_triggered` status
+  - Subfolders: `01_LPO_Documents`, `02_Costing`, `03_Amendments`, `99_Other`
 
 #### Nesting Parser Improvements (`fn_parse_nesting`)
 - **Flange Accessories Extraction** - Added support for extracting accessories from "Flanges" sheet:
@@ -35,6 +141,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Finished Goods Geometry** - Fixed `length_m` extraction (converts mm to meters)
 
 #### New Models
+- `FlowClient`, `FlowClientConfig`, `FlowTriggerResult`, `FlowType` - Power Automate client types
 - `FlangeAccessories` - Data model for corners and other flange accessories
 - Updated `Consumables` - Added `extra_pct` fields for silicone, tape, and glues
 - Updated `MachineTelemetry` - Added `time_2x45_cuts_sec` field
@@ -46,11 +153,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fixed `profiles_and_flanges` extraction to correctly identify all profile blocks in "Flanges" sheet
 - Fixed "Total length" extraction for profiles using anchor-based search (no more hardcoded offsets)
-- Fixed `DeliveryOrderExtractor` to handle multi-row headers for MOUTH A/B geometry and improved header detection using fuzzy matching
-- Fixed critical bug in `SmartsheetClient` where duplicate method definitions caused parameter shadowing
-
-### Changed
-- **Strict Identity Validation** - Missing Tag ID/Reference now triggers a CRITICAL ERROR instead of a warning, preventing invalid data ingestion
+- Fixed `DeliveryOrderExtractor` to handle multi-row headers for MOUTH A/B geometry
 
 ### Tests Added
 - **`test_anchor_finder.py`** - 19 unit tests for Anchor & Offset strategy:
@@ -374,7 +477,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 1.3.1 | 2026-01-18 | Nesting parser: flange accessories, consumables extraction, anchor-based robustness |
+| 1.5.0 | 2026-01-22 | Nesting Parser Orchestration (SOTA Integration) |
+| 1.4.2 | 2026-01-22 | Service Bus queue fix, LPO Handler improvements |
+| 1.4.0 | 2026-01-20 | Event Dispatcher, ID-based routing, event_routing.json config |
+| 1.3.1 | 2026-01-19 | Power Automate FlowClient, LPO folder creation, Nesting Parser improvements |
 | 1.3.0 | 2026-01-13 | Production scheduling function, machine validation, T-1 deadline calculation |
 | 1.2.0 | 2026-01-10 | LPO ingestion/update functions, multi-file support, SharePoint folder generation |
 | 1.1.0 | 2026-01-09 | Base64 file support, complete Tag Registry fields, PO balance fix |
@@ -384,6 +490,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## Upgrade Notes
+
+### Upgrading to 1.4.0
+
+If upgrading from 1.3.x:
+
+1. **New endpoint available**:
+   - `POST /api/events/process-row` - Central event dispatcher
+
+2. **New configuration file**:
+   - `event_routing.json` - Externalized routing config
+   - Edit routes without code changes
+
+3. **New helper module**:
+   - `shared/event_utils.py` - ID-based cell value extraction
+
+4. **No breaking changes** - All existing integrations continue to work.
+
+### Upgrading to 1.3.1
+
+If upgrading from 1.3.0:
+
+1. **New Power Automate integration**:
+   - `shared/power_automate.py` - FlowClient for HTTP trigger flows
+   - Automatic LPO folder creation after ingestion
+
+2. **New environment variables** (optional):
+   - `POWER_AUTOMATE_CREATE_FOLDERS_URL`
+   - `FLOW_FIRE_AND_FORGET`, `FLOW_CONNECT_TIMEOUT`, etc.
+
+3. **No breaking changes** - All existing integrations continue to work.
 
 ### Upgrading to 1.3.0
 

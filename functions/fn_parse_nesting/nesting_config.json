@@ -1,0 +1,35 @@
+{
+    "version": "1.0.0",
+    "validation": {
+        "require_tag_validation": true,
+        "require_lpo_validation": true,
+        "allow_multi_tag_nesting": false,
+        "tag_id_regex": "^TAG-.*"
+    },
+    "deduplication": {
+        "check_file_hash": true,
+        "check_client_request_id": true
+    },
+    "exception_assignment": {
+        "TAG_NOT_FOUND": "production.manager@company.com",
+        "LPO_MISMATCH": "production.manager@company.com",
+        "PARSE_FAILED_CRITICAL": "it.support@company.com",
+        "MULTI_TAG_NEST": "supervisor@company.com",
+        "DUPLICATE_NESTING_FILE": "supervisor@company.com"
+    },
+    "sla_hours": {
+        "CRITICAL": 4,
+        "HIGH": 24,
+        "MEDIUM": 48,
+        "LOW": 72
+    },
+    "smartsheet": {
+        "update_tag_status_on_success": true,
+        "attach_file_to_tag": true,
+        "attach_file_to_nesting_log": true
+    },
+    "id_generation": {
+        "nest_session_id_prefix": "NEST",
+        "date_format": "%Y%m%d"
+    }
+}

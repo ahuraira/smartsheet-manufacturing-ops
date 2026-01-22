@@ -1,6 +1,6 @@
 # 📚 Ducts Manufacturing Inventory Management - Documentation Hub
 
-> **Version:** 1.3.1 | **Last Updated:** 2026-01-18 | **Status:** Active Development
+> **Version:** 1.5.0 | **Last Updated:** 2026-01-22 | **Status:** Active Development
 
 Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory Management System. This documentation follows the [Diátaxis framework](https://diataxis.fr/) to organize content by user needs: **Tutorials**, **How-to Guides**, **Reference**, and **Explanation**.
 
@@ -114,6 +114,7 @@ Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory
 │   ├── 📂 fn_lpo_update/        # LPO update function (v1.2.0)
 │   ├── 📂 fn_schedule_tag/      # Production scheduling (v1.3.0)
 │   ├── 📂 fn_parse_nesting/     # Nesting file parser (v1.3.1)
+│   ├── 📂 fn_event_dispatcher/  # Event router (v1.4.0)
 │   ├── 📂 shared/               # Shared modules
 │   └── 📂 tests/                # Test suite
 ├── 📂 function_adapter/         # ⚡ Azure Functions (Webhooks)

@@ -1,6 +1,6 @@
 # 📘 API Reference
 
-> **Document Type:** Reference | **Version:** 1.3.1 | **Last Updated:** 2026-01-18
+> **Document Type:** Reference | **Version:** 1.5.0 | **Last Updated:** 2026-01-22
 
 This document provides complete API documentation for all Azure Functions endpoints in the Ducts Manufacturing Inventory Management System.
 
@@ -18,6 +18,7 @@ This document provides complete API documentation for all Azure Functions endpoi
    - [LPO Update](#lpo-update-v120) (v1.2.0)
    - [Production Scheduling](#production-scheduling-v130) (v1.3.0)
    - [Nesting Parser](#nesting-parser-v131) (v1.3.1)
+   - [Event Dispatcher](#event-dispatcher-v140) (v1.4.0)
 6. [Webhook Management](#webhook-management-function_adapter) (function_adapter)
 7. [Error Handling](#error-handling)
 8. [Data Models](#data-models)
@@ -107,7 +108,21 @@ All successful responses follow this structure:
   "status": "SUCCESS_STATUS",
   "trace_id": "trace-abc123def456",
   "message": "Human-readable success message",
+  "data": { ... }
   // ... endpoint-specific fields
+}
+```
+
+### EXCEPTION_LOGGED Info
+
+SOTA handlers return **HTTP 200** with `status: EXCEPTION_LOGGED` when a controlled exception (e.g., validation error) is caught and logged to the Exception Sheet. This ensures the client knows the request was processed safely, even if the business logic failed.
+
+```json
+{
+  "status": "EXCEPTION_LOGGED",
+  "trace_id": "trace-abc123def456",
+  "message": "Human-readable message about the exception",
+  "exception_id": "EX-0001"
 }
 ```
 
@@ -706,9 +721,16 @@ Content-Type: application/json
 
 ---
 
-### Nesting Parser (v1.3.1)
+### Nesting Parser (v1.5.0)
 
-Parses Eurosoft CutExpert nesting export files and extracts structured data for inventory, consumption, and production tracking.
+**Orchestration Logic (v2.0.0)**: SOTA implementation with robust validation and idempotency.
+
+Parses Eurosoft CutExpert nesting export files and extracts structured data.
+
+#### Key Features
+- **Idempotency**: Duplicate uploads (same file hash or client_request_id) are blocked.
+- **Fail-Fast**: Validates Tag ID existence and LPO ownership before parsing.
+- **Orchestration**: Automatically logs to `NESTING_LOG`, attaches file to Tag Registry, and creates exceptions if parsing generally succeeds but has warnings.
 
 #### Request Flow
 
@@ -716,22 +738,30 @@ Parses Eurosoft CutExpert nesting export files and extracts structured data for 
 sequenceDiagram
     participant C as 📱 Client
     participant F as ☁️ fn_parse_nesting
+    participant DB as 🗄️ Smartsheet
     
-    C->>F: POST /api/nesting/parse (file)
+    C->>F: POST /api/nesting/parse
     
-    F->>F: Validate File
-    alt Invalid File
-        F-->>C: 400 Bad Request
+    F->>F: Compute File Hash
+    F->>DB: Check Duplicate (Hash/ReqID)
+    alt Duplicate
+        F-->>C: 409 CONFLICT
     end
     
-    F->>F: Extract Tag ID
-    alt Missing Tag ID
-        F-->>C: 200 ERROR
+    F->>F: Parse Header (Tag ID)
+    F->>DB: Validate Tag & LPO
+    alt Invalid/Missing
+        F-->>C: 422 UNPROCESSABLE
     end
     
-    F->>F: Parse Sheets
-    F->>F: Extract Data
-    F-->>C: 200 OK (parsed data)
+    F->>F: Parse All Sheets
+    F->>DB: Log Execution & Attach File
+    
+    alt Parsing Warnings
+        F->>DB: Create Exception Record
+    end
+    
+    F-->>C: 200 OK (with data)
 ```
 
 #### Request
@@ -739,6 +769,7 @@ sequenceDiagram
 ```http
 POST /api/nesting/parse
 Content-Type: multipart/form-data
+x-client-request-id: <uuid> (optional)
 ```
 
 #### Request Body
@@ -870,6 +901,124 @@ When critical data is missing (e.g., Tag ID):
 ```
 
 > **Note:** The function returns 200 even for parsing errors to provide detailed JSON response. The `status` field indicates SUCCESS, PARTIAL, or ERROR.
+
+---
+
+### Event Dispatcher (v1.4.0)
+
+Central event router that receives Smartsheet webhook events and dispatches to appropriate core functions based on ID-based routing configuration.
+
+#### Architecture
+
+```mermaid
+flowchart LR
+    SS[📊 Smartsheet]
+    WH[🔔 Webhook Adapter]
+    ED[⚙️ fn_event_dispatcher]
+    LPO[fn_lpo_ingest]
+    TAG[fn_ingest_tag]
+    SCHED[fn_schedule_tag]
+    
+    SS -->|Webhook| WH
+    WH -->|POST| ED
+    ED -->|Route| LPO
+    ED -->|Route| TAG
+    ED -->|Route| SCHED
+    
+    style ED fill:#FF9800,color:#fff
+```
+
+#### Request
+
+```http
+POST /api/events/process-row
+Content-Type: application/json
+x-trace-id: trace-abc123 (optional)
+```
+
+#### Request Body
+
+```json
+{
+  "sheet_id": 123456789012345,
+  "row_id": 987654321098765,
+  "action": "created",
+  "timestamp": "2026-01-20T12:00:00Z"
+}
+```
+
+#### Request Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sheet_id` | integer | Yes | Smartsheet sheet ID (immutable) |
+| `row_id` | integer | Yes | Row ID that triggered the event |
+| `action` | string | Yes | Event action: `created`, `updated`, `deleted` |
+| `timestamp` | string | No | ISO 8601 timestamp of event |
+
+#### Response: Processed (200)
+
+```json
+{
+  "status": "OK",
+  "handler": "lpo_ingest",
+  "result": { ... },
+  "trace_id": "trace-abc123def456",
+  "processing_time_ms": 125.5
+}
+```
+
+#### Response: Ignored (200)
+
+When no route is configured for the sheet/action:
+
+```json
+{
+  "status": "IGNORED",
+  "message": "No route configured for this event",
+  "trace_id": "trace-abc123def456",
+  "processing_time_ms": 5.2
+}
+```
+
+#### Response: Not Implemented (200)
+
+When handler exists in config but not yet implemented:
+
+```json
+{
+  "status": "NOT_IMPLEMENTED",
+  "handler": "lpo_status_change",
+  "message": "Handler 'lpo_status_change' is not yet implemented",
+  "trace_id": "trace-abc123def456",
+  "processing_time_ms": 3.1
+}
+```
+
+#### Routing Configuration
+
+Routes are defined in `event_routing.json` (externalized, no code changes needed):
+
+```json
+{
+  "routes": [
+    {
+      "logical_sheet": "01H_LPO_INGESTION",
+      "actions": {
+        "created": { "handler": "lpo_ingest", "enabled": true }
+      }
+    }
+  ],
+  "handler_config": {
+    "lpo_ingest": {
+      "function": "fn_lpo_ingest",
+      "timeout_seconds": 30
+    }
+  }
+}
+```
+
+> **ID-Based Routing**: The dispatcher uses immutable Smartsheet IDs (not names), making it immune to sheet/column renames.
 
 ---
 

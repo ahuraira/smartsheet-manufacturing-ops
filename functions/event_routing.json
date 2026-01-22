@@ -1,0 +1,101 @@
+{
+    "$schema": "./event_routing_schema.json",
+    "$comment": "Event Routing Configuration - Edit this file to add/modify routing without code changes",
+    "routes": [
+        {
+            "logical_sheet": "01H_LPO_INGESTION",
+            "description": "LPO form submissions from staging sheet",
+            "actions": {
+                "created": {
+                    "handler": "lpo_ingest",
+                    "enabled": true
+                },
+                "updated": {
+                    "handler": "lpo_update",
+                    "enabled": true
+                }
+            }
+        },
+        {
+            "logical_sheet": "02H_TAG_SHEET_STAGING",
+            "description": "Tag sheet uploads from staging",
+            "actions": {
+                "created": {
+                    "handler": "tag_ingest",
+                    "enabled": true
+                }
+            }
+        },
+        {
+            "logical_sheet": "03H_PRODUCTION_PLANNING_STAGING",
+            "description": "Production schedule requests",
+            "actions": {
+                "created": {
+                    "handler": "schedule_tag",
+                    "enabled": true
+                }
+            }
+        },
+        {
+            "logical_sheet": "LPO_MASTER",
+            "description": "LPO master record changes",
+            "actions": {
+                "updated": {
+                    "handler": "lpo_status_change",
+                    "enabled": false,
+                    "comment": "Enable when fn_lpo_status_change is implemented"
+                }
+            }
+        },
+        {
+            "logical_sheet": "TAG_REGISTRY",
+            "description": "Tag registry changes",
+            "actions": {
+                "updated": {
+                    "handler": "tag_status_change",
+                    "enabled": false,
+                    "comment": "Enable when fn_tag_status_change is implemented"
+                }
+            }
+        }
+    ],
+    "handler_config": {
+        "lpo_ingest": {
+            "function": "fn_lpo_ingest",
+            "timeout_seconds": 30,
+            "retry_on_failure": true
+        },
+        "lpo_update": {
+            "function": "fn_lpo_update",
+            "timeout_seconds": 30,
+            "retry_on_failure": true
+        },
+        "tag_ingest": {
+            "function": "fn_ingest_tag",
+            "timeout_seconds": 30,
+            "retry_on_failure": true
+        },
+        "schedule_tag": {
+            "function": "fn_schedule_tag",
+            "timeout_seconds": 30,
+            "retry_on_failure": true
+        },
+        "lpo_status_change": {
+            "function": "fn_lpo_status_change",
+            "timeout_seconds": 30,
+            "retry_on_failure": true,
+            "not_implemented": true
+        },
+        "tag_status_change": {
+            "function": "fn_tag_status_change",
+            "timeout_seconds": 30,
+            "retry_on_failure": true,
+            "not_implemented": true
+        }
+    },
+    "global_settings": {
+        "ignore_system_actors": true,
+        "log_ignored_events": false,
+        "default_timeout_seconds": 30
+    }
+}

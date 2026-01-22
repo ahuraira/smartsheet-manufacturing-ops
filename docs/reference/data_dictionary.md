@@ -1,6 +1,6 @@
 # 📊 Data Dictionary
 
-> **Document Type:** Reference | **Version:** 1.3.1 | **Last Updated:** 2026-01-18
+> **Document Type:** Reference | **Version:** 1.5.0 | **Last Updated:** 2026-01-22
 
 This document provides a complete reference of all data models, sheets, and column definitions used in the Ducts Manufacturing Inventory Management System.
 
@@ -345,8 +345,8 @@ class LPOIngestRequest(BaseModel):
     
     # Optional fields
     customer_lpo_ref: Optional[str] = None
-    terms_of_payment: str = "30 Days Credit"
-    wastage_pct: float = Field(default=0.0, ge=0, le=20)
+    terms_of_payment: Optional[str] = "30 Days Credit"
+    wastage_pct: float = Field(default=0.0, ge=0.0, le=20.0)
     remarks: Optional[str] = None
     
     # File attachments (multi-file support)
@@ -498,7 +498,7 @@ class MachineTelemetry(BaseModel):
     time_2x45_cuts_sec: Optional[int] = None  # v1.3.1
 ```
 
-### NestingParseResult (v1.3.1)
+### NestingParseResult (v1.5.0)
 
 Complete result from nesting file parsing.
 
@@ -521,6 +521,54 @@ class NestingParseResult(BaseModel):
 | `warnings` | List[str] | Non-critical issues |
 | `validation_errors` | List[str] | Critical validation failures |
 | `trace_id` | string | Request trace ID |
+
+### RowEvent (v1.4.0)
+
+Event from Smartsheet webhook adapter.
+
+```python
+class RowEvent(BaseModel):
+    sheet_id: int
+    row_id: int
+    action: str  # created, updated, deleted
+    timestamp: Optional[str] = None
+    trace_id: Optional[str] = None
+```
+
+### DispatchResult (v1.4.0)
+
+Response from event dispatcher.
+
+```python
+class DispatchResult(BaseModel):
+    status: str  # OK, IGNORED, NOT_IMPLEMENTED, ERROR
+    handler: Optional[str] = None
+    message: Optional[str] = None
+    trace_id: str
+    processing_time_ms: Optional[float] = None
+```
+
+### RoutingConfig (v1.4.0)
+
+Configuration for event routing (loaded from `event_routing.json`).
+
+```python
+class SheetRoute(BaseModel):
+    logical_sheet: str
+    description: Optional[str] = None
+    actions: Dict[str, ActionConfig]
+
+class HandlerConfig(BaseModel):
+    function: str
+    timeout_seconds: int = 30
+    retry_on_failure: bool = True
+    not_implemented: bool = False
+
+class RoutingConfig(BaseModel):
+    routes: List[SheetRoute] = []
+    handler_config: Dict[str, HandlerConfig] = {}
+    global_settings: Dict[str, Any] = {}
+```
 
 ### ExceptionRecord
 

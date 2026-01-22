@@ -94,10 +94,14 @@ from shared import (
     calculate_sla_due,
     format_datetime_for_smartsheet,
     generate_lpo_folder_path,
+    generate_lpo_folder_url,
     
     # Audit (shared - DRY)
     create_exception,
     log_user_action,
+    
+    # Power Automate (v1.3.1+)
+    trigger_create_lpo_folders,
 )
 
 
@@ -134,13 +138,26 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             request = LPOIngestRequest(**body)
         except ValueError as e:
             logger.error(f"[{trace_id}] Request validation failed: {e}")
+            
+            # SOTA: Create exception for validation errors
+            client = get_smartsheet_client()
+            exception_id = create_exception(
+                client=client,
+                trace_id=trace_id,
+                reason_code=ReasonCode.LPO_INVALID_DATA,
+                severity=ExceptionSeverity.MEDIUM,
+                source=ExceptionSource.INGEST,
+                message=f"Validation error: {str(e)}"
+            )
+            
             return func.HttpResponse(
                 json.dumps({
-                    "status": "ERROR",
+                    "status": "VALIDATION_ERROR",
+                    "exception_id": exception_id,
                     "message": f"Invalid request: {str(e)}",
                     "trace_id": trace_id
                 }),
-                status_code=400,
+                status_code=422,
                 mimetype="application/json"
             )
         
@@ -284,15 +301,16 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
-        # 6. Generate folder path
-        sharepoint_base = request.sharepoint_base_url or os.environ.get(
-            "SHAREPOINT_BASE_URL",
-            "https://your-tenant.sharepoint.com/sites/Ducts/Shared Documents"
-        )
+        # 6. Generate folder paths
+        # Relative path for Power Automate (folder creation)
         folder_path = generate_lpo_folder_path(
             sap_reference=request.sap_reference,
-            customer_name=request.customer_name,
-            base_url=sharepoint_base
+            customer_name=request.customer_name
+        )
+        # Full encoded URL for Smartsheet (clickable link)
+        folder_url = generate_lpo_folder_url(
+            sap_reference=request.sap_reference,
+            customer_name=request.customer_name
         )
         
         # 7. Create LPO record
@@ -313,7 +331,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             Column.LPO_MASTER.TERMS_OF_PAYMENT: request.terms_of_payment,
             Column.LPO_MASTER.HOLD_REASON: request.hold_reason,
             Column.LPO_MASTER.REMARKS: request.remarks,
-            Column.LPO_MASTER.FOLDER_URL: folder_path,
+            Column.LPO_MASTER.FOLDER_URL: folder_url,
             Column.LPO_MASTER.SOURCE_FILE_HASH: file_hash,
             Column.LPO_MASTER.CLIENT_REQUEST_ID: request.client_request_id,
             Column.LPO_MASTER.CREATED_BY: request.uploaded_by,
@@ -357,12 +375,31 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             trace_id=trace_id
         )
         
-        # 9. Return success
+        # 9. Trigger Power Automate flow for folder creation (fire-and-forget)
+        # This is non-blocking - LPO creation succeeds even if flow fails
+        flow_result = trigger_create_lpo_folders(
+            sap_reference=request.sap_reference,
+            customer_name=request.customer_name,
+            folder_path=folder_path,
+            correlation_id=trace_id
+        )
+        
+        if flow_result.success:
+            logger.info(f"[{trace_id}] Folder creation flow triggered successfully")
+        else:
+            # Don't fail the LPO creation - folder creation is eventual consistency
+            logger.warning(
+                f"[{trace_id}] Folder creation flow trigger failed: {flow_result.error_message}. "
+                "Folders can be created manually or on retry."
+            )
+        
+        # 10. Return success
         return func.HttpResponse(
             json.dumps({
                 "status": "OK",
                 "sap_reference": request.sap_reference,
                 "folder_path": folder_path,
+                "folder_creation_triggered": flow_result.success,
                 "trace_id": trace_id,
                 "message": "LPO created successfully"
             }),
@@ -372,9 +409,25 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     
     except Exception as e:
         logger.exception(f"[{trace_id}] Unexpected error: {e}")
+        
+        # SOTA: Create exception for unexpected errors
+        try:
+            client = get_smartsheet_client()
+            exception_id = create_exception(
+                client=client,
+                trace_id=trace_id,
+                reason_code=ReasonCode.LPO_INVALID_DATA,
+                severity=ExceptionSeverity.HIGH,
+                source=ExceptionSource.INGEST,
+                message=f"Unexpected error: {str(e)}"
+            )
+        except Exception:
+            exception_id = None  # Fallback if exception logging also fails
+        
         return func.HttpResponse(
             json.dumps({
                 "status": "ERROR",
+                "exception_id": exception_id,
                 "message": f"Internal server error: {str(e)}",
                 "trace_id": trace_id
             }),

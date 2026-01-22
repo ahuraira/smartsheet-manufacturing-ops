@@ -221,7 +221,41 @@ class SmartsheetClient:
         # Rate limiter
         self._rate_limiter = RateLimiter()
         
+        # User email cache (user_id -> email)
+        self._user_email_cache: Dict[int, Optional[str]] = {}
+        
         logger.info(f"SmartsheetClient initialized. Manifest loaded: {self._manifest.is_loaded()}")
+    
+    # ============== User Methods ==============
+    
+    @retry_with_backoff(max_retries=3)
+    def _fetch_user(self, user_id: int) -> Optional[str]:
+        """Internal method to fetch user email with retry."""
+        response = self._make_request("GET", f"{self.base_url}/users/{user_id}")
+        return response.json().get("email")
+    
+    def get_user_email(self, user_id: int) -> Optional[str]:
+        """
+        Get user email by Smartsheet user ID.
+        
+        Args:
+            user_id: Numeric Smartsheet user ID
+            
+        Returns:
+            Email address or None if not found
+        """
+        # Check cache first
+        if user_id in self._user_email_cache:
+            return self._user_email_cache[user_id]
+        
+        try:
+            email = self._fetch_user(user_id)
+            self._user_email_cache[user_id] = email
+            return email
+        except Exception as e:
+            logger.warning(f"Failed to get email for user {user_id}: {e}")
+            self._user_email_cache[user_id] = None
+            return None
     
     # ============== Low-level API Methods ==============
     
@@ -416,6 +450,76 @@ class SmartsheetClient:
         response = self._make_request("GET", url, params=params)
         return response.json()
     
+    @retry_with_backoff(max_retries=3)
+    def get_row(
+        self, 
+        sheet_ref: Union[str, int], 
+        row_id: int
+    ) -> Optional[Dict[int, Any]]:
+        """
+        Get a single row by ID, returning cell values keyed by column_id.
+        
+        This is the SOTA method for ID-based row access - immune to column renames.
+        
+        Args:
+            sheet_ref: Sheet reference (logical name, physical name, or ID)
+            row_id: Immutable Smartsheet row ID
+        
+        Returns:
+            Dict mapping column_id (int) -> cell_value, or None if row not found
+        """
+        sheet_id = self.resolve_sheet_id(sheet_ref)
+        url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}"
+        
+        try:
+            response = self._make_request("GET", url)
+            row_data = response.json()
+            
+            # Build column_id -> value mapping (ID-based, rename-proof)
+            result = {}
+            for cell in row_data.get("cells", []):
+                col_id = cell.get("columnId")
+                value = cell.get("value") or cell.get("displayValue")
+                if col_id is not None:
+                    result[col_id] = value
+            
+            return result
+            
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                logger.warning(f"Row {row_id} not found in sheet {sheet_id}")
+                return None
+            raise
+
+    @retry_with_backoff(max_retries=3)
+    def get_row_attachments(
+        self, 
+        sheet_ref: Union[str, int], 
+        row_id: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all attachments for a specific row.
+        
+        Args:
+            sheet_ref: Sheet reference (logical name, physical name, or ID)
+            row_id: Immutable Smartsheet row ID
+        
+        Returns:
+            List of attachment dictionaries with 'url', 'name', etc.
+        """
+        sheet_id = self.resolve_sheet_id(sheet_ref)
+        url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}/attachments"
+        
+        try:
+            response = self._make_request("GET", url)
+            data = response.json()
+            return data.get("data", [])
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                logger.warning(f"Row {row_id} not found in sheet {sheet_id}")
+                return []
+            raise
+
     @retry_with_backoff(max_retries=3)
     def find_rows(
         self, 

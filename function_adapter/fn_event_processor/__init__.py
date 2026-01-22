@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 CORE_FUNCTIONS_BASE_URL = os.getenv("CORE_FUNCTIONS_BASE_URL", "")
+CORE_FUNCTIONS_KEY = os.getenv("CORE_FUNCTIONS_KEY", "")  # Function key for auth
 CORE_FUNCTIONS_TIMEOUT = int(os.getenv("CORE_FUNCTIONS_TIMEOUT_SECONDS", "30"))
 PROCESS_ROW_ENDPOINT = "/api/events/process-row"
 
@@ -103,14 +104,21 @@ def forward_to_core_functions(event: Dict[str, Any]) -> Dict[str, Any]:
     try:
         session = get_session()
         
+        # Build headers with function key for auth
+        headers = {
+            "Content-Type": "application/json",
+            "x-client-request-id": event.get("event_id", trace_id),
+            "x-trace-id": trace_id
+        }
+        
+        # Add function key if configured
+        if CORE_FUNCTIONS_KEY:
+            headers["x-functions-key"] = CORE_FUNCTIONS_KEY
+        
         response = session.post(
             url,
             json=payload,
-            headers={
-                "Content-Type": "application/json",
-                "x-client-request-id": event.get("event_id", trace_id),
-                "x-trace-id": trace_id
-            },
+            headers=headers,
             timeout=CORE_FUNCTIONS_TIMEOUT
         )
         

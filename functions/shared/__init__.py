@@ -163,6 +163,7 @@ from .helpers import (
     # LPO folder helpers (v1.1.0+)
     sanitize_folder_name,
     generate_lpo_folder_path,
+    generate_lpo_folder_url,
     generate_lpo_subfolder_paths,
 )
 
@@ -170,6 +171,22 @@ from .helpers import (
 from .audit import (
     create_exception,
     log_user_action,
+)
+
+# Power Automate client (v1.3.1+)
+from .power_automate import (
+    FlowClient,
+    FlowClientConfig,
+    FlowTriggerResult,
+    FlowType,
+    get_flow_client,
+    trigger_create_lpo_folders,
+)
+
+# Event processing utilities (v1.4.0+)
+from .event_utils import (
+    get_cell_value_by_column_id,
+    get_cell_value_by_logical_name,
 )
 
 __all__ = [
@@ -251,4 +268,14 @@ __all__ = [
     # Audit utilities (DRY - v1.2.0+)
     "create_exception",
     "log_user_action",
+    # Power Automate (v1.3.1+)
+    "FlowClient",
+    "FlowClientConfig",
+    "FlowTriggerResult",
+    "FlowType",
+    "get_flow_client",
+    "trigger_create_lpo_folders",
+    # Event utils (v1.4.0+)
+    "get_cell_value_by_column_id",
+    "get_cell_value_by_logical_name",
 ]

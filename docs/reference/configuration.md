@@ -1,6 +1,6 @@
 # ⚙️ Configuration Reference
 
-> **Document Type:** Reference | **Version:** 1.0.0 | **Last Updated:** 2026-01-08
+> **Document Type:** Reference | **Version:** 1.5.0 | **Last Updated:** 2026-01-22
 
 This document provides a complete reference of all configuration options in the Ducts Manufacturing Inventory Management System.
 
@@ -39,7 +39,23 @@ This document provides a complete reference of all configuration options in the 
 |----------|-------------|---------|
 | `WEBHOOK_CALLBACK_URL` | Public URL for Smartsheet webhook callbacks | `https://my-func.azurewebsites.net/api/webhooks/receive` |
 | `SERVICEBUS_CONNECTION` | Azure Service Bus connection string | `Endpoint=sb://...` |
-| `SERVICEBUS_QUEUE_NAME` | Queue name for events | `smartsheet-events` |
+| `SERVICEBUS_QUEUE_NAME` | Queue name for events | `events-main` |
+
+### Power Automate Variables (v1.3.1)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POWER_AUTOMATE_CREATE_FOLDERS_URL` | HTTP trigger URL for folder creation flow | (required) |
+| `FLOW_FIRE_AND_FORGET` | Enable async mode (don't wait for response) | `true` |
+| `FLOW_CONNECT_TIMEOUT` | Connection timeout in seconds | `5` |
+| `FLOW_READ_TIMEOUT` | Read timeout in seconds | `30` |
+| `FLOW_MAX_RETRIES` | Maximum retry attempts | `3` |
+
+### LPO Configuration (v1.4.0)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LPO_SUBFOLDERS` | Comma-separated subfolder names | `01_LPO_Documents,02_Costing,03_Amendments,99_Other` |
 
 ### Setting Environment Variables
 
@@ -194,6 +210,59 @@ Example:
 |----------------------|--------------|----------------|------------|
 | min_remnant_area_m2  | 0.5          | 2026-01-08     | admin      |
 ```
+
+---
+
+## Nesting Configuration
+
+The `fn_parse_nesting` function uses a specialized configuration file `nesting_config.json` for validation rules and processing logic.
+
+### nesting_config.json
+
+Location: `functions/fn_parse_nesting/nesting_config.json`
+
+```json
+{
+    "version": "1.0.0",
+    "validation": {
+        "require_tag_validation": true,
+        "require_lpo_validation": true,
+        "allow_multi_tag_nesting": false,
+        "tag_id_regex": "^TAG-.*"
+    },
+    "deduplication": {
+        "check_file_hash": true,
+        "check_client_request_id": true
+    },
+    "exception_assignment": {
+        "TAG_NOT_FOUND": "production.manager@company.com",
+        "LPO_MISMATCH": "production.manager@company.com",
+        "PARSE_FAILED_CRITICAL": "it.support@company.com"
+    },
+    "sla_hours": {
+        "CRITICAL": 4,
+        "HIGH": 24,
+        "MEDIUM": 48,
+        "LOW": 72
+    },
+    "smartsheet": {
+        "update_tag_status_on_success": true,
+        "attach_file_to_tag": true,
+        "attach_file_to_nesting_log": true
+    },
+    "id_generation": {
+        "nest_session_id_prefix": "NEST",
+        "date_format": "%Y%m%d"
+    }
+}
+```
+
+| Section | Setting | Description |
+|---------|---------|-------------|
+| **Validation** | `require_tag_validation` | Fail if Tag ID not found in Registry |
+| | `require_lpo_validation` | Fail if Tag LPO doesn't match User LPO |
+| **Deduplication** | `check_file_hash` | Block duplicate file content |
+| **Smartsheet** | `attach_file_to_tag` | Attach parsed file to Tag row |
 
 ---
 

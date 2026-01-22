@@ -286,6 +286,13 @@ class NestingExecutionRecord(BaseModel):
         return obj
 
 
+class AttachmentInfo(BaseModel):
+    """Information about a file attachment."""
+    target: str
+    row_id: int
+    name: str
+
+
 class ParsingResult(BaseModel):
     """
     Wrapper for parsing operation result.
@@ -293,9 +300,37 @@ class ParsingResult(BaseModel):
     Allows partial success with warnings.
     """
     
-    status: Literal["SUCCESS", "PARTIAL", "ERROR"] = "SUCCESS"
+    status: Literal["SUCCESS", "PARTIAL", "ERROR", "DUPLICATE", "VALIDATION_ERROR", "PARSE_ERROR"] = "SUCCESS"
     data: Optional[NestingExecutionRecord] = None
     warnings: List[str] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
     source_file: str = ""
     processing_time_ms: float = 0.0
+    
+    # New fields for v2 integration
+    request_id: Optional[str] = None
+    tag_id: Optional[str] = None
+    nest_session_id: Optional[str] = None
+    nesting_row_id: Optional[int] = None
+    tag_row_id: Optional[int] = None
+    file_hash: Optional[str] = None
+    attachments: List[AttachmentInfo] = Field(default_factory=list)
+    expected_consumption_m2: Optional[float] = None
+    wastage_percentage: Optional[float] = None
+    trace_id: Optional[str] = None
+    
+    # Error fields
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    exception_id: Optional[str] = None
+    existing_nest_session_id: Optional[str] = None
+
+
+class ValidationResult(BaseModel):
+    """Result of a validation check."""
+    is_valid: bool
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    tag_row_id: Optional[int] = None
+    tag_lpo_ref: Optional[str] = None
+

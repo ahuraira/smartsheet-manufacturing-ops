@@ -56,6 +56,7 @@ class MockWorkspaceManifest:
             # v1.3.0 new sheets
             "MACHINE_MASTER": {"id": 1007, "name": "00b Machine Master"},
             "PRODUCTION_PLANNING": {"id": 1008, "name": "03 Production Planning"},
+            "NESTING_LOG": {"id": 1009, "name": "04 Nesting Execution Log"},
             # Alias for physical name lookup in fn_schedule_tag
             "00B_MACHINE_MASTER": {"id": 1007, "name": "00b Machine Master"},
         }
@@ -171,6 +172,18 @@ class MockWorkspaceManifest:
                 "CLIENT_REQUEST_ID": {"id": 8010, "name": "Client Request ID"},
                 "TRACE_ID": {"id": 8011, "name": "Trace ID"},
                 "REMARKS": {"id": 8012, "name": "Remarks"},
+            },
+            "NESTING_LOG": {
+                "NEST_SESSION_ID": {"id": 9001, "name": "Nest Session ID"},
+                "TAG_SHEET_ID": {"id": 9002, "name": "Tag Sheet ID"},
+                "TIMESTAMP": {"id": 9003, "name": "Timestamp"},
+                "BRAND": {"id": 9004, "name": "Brand"},
+                "SHEETS_CONSUMED_VIRTUAL": {"id": 9005, "name": "Sheets Consumed (Virtual)"},
+                "EXPECTED_CONSUMPTION_M2": {"id": 9006, "name": "Expected Consumption (m2)"},
+                "WASTAGE_PERCENTAGE": {"id": 9007, "name": "Wastage Percentage"},
+                "PLANNED_DATE": {"id": 9008, "name": "Planned Date"},
+                "FILE_HASH": {"id": 9009, "name": "File Hash"},
+                "CLIENT_REQUEST_ID": {"id": 9010, "name": "Client Request ID"},
             },
         }
     
