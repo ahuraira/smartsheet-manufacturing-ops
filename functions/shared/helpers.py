@@ -265,3 +265,54 @@ def generate_lpo_subfolder_paths(lpo_folder_path: str) -> Dict[str, str]:
         "Remnants": f"{lpo_folder_path}/Remnants",
         "Audit": f"{lpo_folder_path}/Audit",
     }
+
+
+def extract_row_attachments_as_files(
+    client: Any,
+    sheet_id: int,
+    row_id: int,
+    file_type: Any = None,
+    trace_id: Optional[str] = None
+) -> list:
+    """
+    Extract row attachments and convert to FileAttachment objects.
+    
+    This is a DRY helper function used by both tag_handler and lpo_handler.
+    
+    Args:
+        client: SmartsheetClient instance
+        sheet_id: Numeric sheet ID
+        row_id: Numeric row ID
+        file_type: FileType enum value to use (defaults to OTHER)
+        trace_id: Optional trace ID for logging
+        
+    Returns:
+        List of FileAttachment objects
+    """
+    from .models import FileAttachment, FileType
+    
+    if file_type is None:
+        file_type = FileType.OTHER
+    
+    files = []
+    try:
+        attachments = client.get_row_attachments(sheet_id, row_id)
+        for att in attachments:
+            # The attachment detail includes 'url' for downloadable files
+            file_url = att.get("url") or att.get("attachmentUrl")
+            file_name = att.get("name") or att.get("fileName")
+            if file_url:
+                files.append(FileAttachment(
+                    file_type=file_type,
+                    file_url=file_url,
+                    file_name=file_name
+                ))
+        if trace_id:
+            logger.info(f"[{trace_id}] Extracted {len(files)} attachments from row {row_id}")
+    except Exception as att_err:
+        if trace_id:
+            logger.warning(f"[{trace_id}] Failed to fetch attachments: {att_err}")
+        else:
+            logger.warning(f"Failed to fetch attachments for row {row_id}: {att_err}")
+    
+    return files

@@ -238,7 +238,8 @@ class TestDuplicateFileDetection:
         with patch('fn_ingest_tag.get_smartsheet_client', return_value=mock_client):
             with patch('fn_ingest_tag.get_manifest', return_value=MockWorkspaceManifest()):
                 with patch('fn_ingest_tag._manifest', MockWorkspaceManifest()):
-                    with patch('fn_ingest_tag.compute_file_hash_from_url', return_value="abc123duplicatehash"):
+                    # v1.6.3: Use compute_combined_file_hash patch as main now uses that
+                    with patch('fn_ingest_tag.compute_combined_file_hash', return_value="abc123duplicatehash"):
                         import fn_ingest_tag
                         response = fn_ingest_tag.main(mock_http_request(request_data))
         

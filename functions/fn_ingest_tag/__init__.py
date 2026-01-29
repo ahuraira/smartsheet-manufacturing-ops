@@ -115,6 +115,7 @@ from shared import (
     generate_trace_id,
     compute_file_hash_from_url,
     compute_file_hash_from_base64,
+    compute_combined_file_hash,  # Multi-file support (DRY with fn_lpo_ingest)
     format_datetime_for_smartsheet,
     parse_float_safe,
     # Audit (shared - DRY principle)
@@ -186,12 +187,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
-        # 3. File hash check (if file URL or content provided)
-        file_hash = None
-        if request.file_url:
-            file_hash = compute_file_hash_from_url(request.file_url)
-        elif request.file_content:
-            file_hash = compute_file_hash_from_base64(request.file_content)
+        # 3. File hash check (multi-file support - v1.6.3)
+        # Uses get_all_files() for backward compatibility (DRY with LPOIngestRequest)
+        all_files = request.get_all_files()
+        file_hash = compute_combined_file_hash(all_files) if all_files else None
         
         if file_hash:
             existing_by_hash = client.find_row(
@@ -298,14 +297,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Check PO balance - use physical column names from manifest
         po_qty_col = _get_physical_column_name("LPO_MASTER", "PO_QUANTITY_SQM")
         delivered_qty_col = _get_physical_column_name("LPO_MASTER", "DELIVERED_QUANTITY_SQM")
+        allocated_qty_col = _get_physical_column_name("LPO_MASTER", "ALLOCATED_QUANTITY")
         
         po_quantity = parse_float_safe(lpo.get(po_qty_col))
         delivered_qty = parse_float_safe(lpo.get(delivered_qty_col))
+        allocated_qty = parse_float_safe(lpo.get(allocated_qty_col))
         
-        logger.info(f"[{trace_id}] PO balance check: po_qty={po_quantity}, delivered={delivered_qty}")
+        logger.info(f"[{trace_id}] PO balance check: po_qty={po_quantity}, delivered={delivered_qty}, allocated={allocated_qty}")
         
-        # TODO: Sum active allocations for accurate committed calculation
-        committed = delivered_qty
+        # FIX: Include allocated quantity in balance check (architecture spec §2 Step 2)
+        # Formula: delivered + allocated + planned <= PO Quantity
+        committed = delivered_qty + allocated_qty
         remaining = po_quantity - committed
         
         if request.required_area_m2 > remaining:
@@ -392,30 +394,22 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         logger.info(f"[{trace_id}] Tag created successfully: {tag_id}, row_id: {row_id}")
         
-        # 6b. Attach file to the row
-        attachment_info = None
-        if row_id:
-            try:
-                if request.file_url:
-                    # Attach URL directly
-                    attachment_info = client.attach_url_to_row(
-                        Sheet.TAG_REGISTRY,
-                        row_id,
-                        request.file_url,
-                        request.original_file_name or f"attachment_{tag_id}"
-                    )
-                    logger.info(f"[{trace_id}] File URL attached to tag: {attachment_info}")
-                elif request.file_content:
-                    # Attach base64 content as file
-                    attachment_info = client.attach_file_to_row(
-                        Sheet.TAG_REGISTRY,
-                        row_id,
-                        request.file_content,
-                        request.original_file_name or f"attachment_{tag_id}.pdf"
-                    )
-                    logger.info(f"[{trace_id}] File content attached to tag: {attachment_info}")
-            except Exception as attach_error:
-                logger.warning(f"[{trace_id}] Failed to attach file: {attach_error}")
+        # 6b. Attach files to the row (multi-file support - v1.6.3)
+        # Reuses pattern from fn_lpo_ingest (DRY principle)
+        attached_count = 0
+        if row_id and all_files:
+            for f in all_files:
+                try:
+                    file_name = f.file_name or f"attachment_{tag_id}_{attached_count}"
+                    if f.file_url:
+                        client.attach_url_to_row(Sheet.TAG_REGISTRY, row_id, f.file_url, file_name)
+                        attached_count += 1
+                    elif f.file_content:
+                        client.attach_file_to_row(Sheet.TAG_REGISTRY, row_id, f.file_content, file_name)
+                        attached_count += 1
+                except Exception as attach_err:
+                    logger.warning(f"[{trace_id}] Failed to attach file {file_name}: {attach_err}")
+            logger.info(f"[{trace_id}] Attached {attached_count}/{len(all_files)} files to tag")
         
         # 7. Log user action
         log_user_action(

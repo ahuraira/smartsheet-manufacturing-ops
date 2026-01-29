@@ -181,7 +181,7 @@ class TestAcceptanceCriteria:
         with patch('fn_ingest_tag.get_smartsheet_client', return_value=mock_client):
             with patch('fn_ingest_tag.get_manifest', return_value=MockWorkspaceManifest()):
                 with patch('fn_ingest_tag._manifest', MockWorkspaceManifest()):
-                    with patch('fn_ingest_tag.compute_file_hash_from_url', return_value=existing_hash):
+                    with patch('fn_ingest_tag.compute_combined_file_hash', return_value=existing_hash):
                         from fn_ingest_tag import main
                         http_req = mock_http_request(request_data)
                         response = main(http_req)

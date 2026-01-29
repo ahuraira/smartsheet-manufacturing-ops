@@ -266,8 +266,8 @@ class TestLPOIngestValidation:
         assert body["status"] == "BLOCKED"
         assert "exception_id" in body
     
-    def test_missing_required_field_returns_400(self, mock_storage, factory, mock_http_request):
-        """Test that missing required field returns 400."""
+    def test_missing_required_field_returns_422(self, mock_storage, factory, mock_http_request):
+        """Test that missing required field returns 422 (Pydantic validation error)."""
         request_data = {
             "client_request_id": str(uuid.uuid4()),
             # Missing: sap_reference
@@ -287,9 +287,10 @@ class TestLPOIngestValidation:
                 from fn_lpo_ingest import main
                 response = main(mock_http_request(request_data))
         
-        assert response.status_code == 400
+        # Pydantic 2.x returns 422 for validation errors
+        assert response.status_code == 422
         body = json.loads(response.get_body())
-        assert body["status"] == "ERROR"
+        assert body["status"] == "VALIDATION_ERROR"
 
 
 @pytest.mark.integration

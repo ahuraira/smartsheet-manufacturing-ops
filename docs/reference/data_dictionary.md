@@ -1,6 +1,6 @@
 # 📊 Data Dictionary
 
-> **Document Type:** Reference | **Version:** 1.5.0 | **Last Updated:** 2026-01-22
+> **Document Type:** Reference | **Version:** 1.6.3 | **Last Updated:** 2026-01-29
 
 This document provides a complete reference of all data models, sheets, and column definitions used in the Ducts Manufacturing Inventory Management System.
 
@@ -231,9 +231,11 @@ class TagIngestRequest(BaseModel):
     required_area_m2: float
     requested_delivery_date: str  # ISO format
     
-    # File handling - either URL or base64 content
+    # File handling (v1.6.3: Multi-file support)
+    files: List[FileAttachment] = Field(default_factory=list)
+    # Legacy support (deprecated but handled)
     file_url: Optional[str] = None
-    file_content: Optional[str] = None  # Base64 encoded file content
+    file_content: Optional[str] = None
     original_file_name: Optional[str] = None
     
     # User info
@@ -256,9 +258,7 @@ class TagIngestRequest(BaseModel):
 | `lpo_sap_reference` | string | No | SAP reference |
 | `required_area_m2` | float | Yes | Required area |
 | `requested_delivery_date` | ISO date | Yes | Delivery date |
-| `file_url` | URL | No | Tag sheet file URL |
-| `file_content` | string | No | Base64 encoded file content |
-| `original_file_name` | string | No | Original filename |
+| `files` | List[FileAttachment] | Yes* | Tag sheet files (*at least 1) |
 | `uploaded_by` | email | Yes | Uploader email |
 | `tag_name` | string | No | Display name |
 | `received_through` | string | No | Reception channel (Email/Whatsapp/API) |
@@ -723,6 +723,99 @@ class TagRecord(BaseModel):
 | `Old Value` | Text | No | Previous value (JSON) |
 | `New Value` | Text | No | New value (JSON) |
 | `Notes` | Text | No | Additional context |
+
+### Material Master (05a Material Master)
+
+| Column | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Mapping ID` | Text | Yes | Unique identifier (MAP-NNNN) |
+| `Nesting Description` | Text | Yes | Exact logic description from parser |
+| `Canonical Code` | Text | Yes | Standard system code |
+| `Default SAP Code` | Text | No | Fallback SAP material code |
+| `UOM` | Picklist | Yes | System unit of measure |
+| `SAP UOM` | Picklist | No | SAP unit of measure |
+| `Conversion Factor` | Number | No | Multiplier (SAP = System * Factor) |
+| `Not Tracked` | Checkbox | No | Ignored in inventory if checked |
+| `Active` | Checkbox | Yes | Enables mapping logic |
+| `Notes` | Text | No | Usage notes |
+| `Updated At` | DateTime | Auto | Last modification |
+| `Updated By` | Contact | Auto | Last modifier |
+
+### Mapping Override (05b Mapping Override)
+
+| Column | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Override ID` | Text | Yes | Unique identifier (OVR-NNNN) |
+| `Scope Type` | Picklist | Yes | LPO, PROJECT, or CUSTOMER |
+| `Scope Value` | Text | Yes | Specific value (e.g., LPO-001) |
+| `Nesting Description` | Text | Yes | Logic description to override |
+| `Canonical Code` | Text | Yes | Target canonical code |
+| `SAP Code` | Text | Yes | Specific SAP code to use |
+| `Active` | Checkbox | Yes | Enables override |
+| `Effective From` | Date | Yes | Start date |
+| `Effective To` | Date | No | End date (optional) |
+| `Created By` | Contact | Auto | Creator |
+| `Created At` | DateTime | Auto | Creation time |
+
+### LPO Material Brand Map (05c LPO Material Brand Map)
+
+| Column | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Map ID` | Text | Yes | Unique identifier (BRAND-NNNN) |
+| `LPO ID` | Text | Yes | Linked LPO |
+| `Canonical Code` | Text | Yes | Target canonical code |
+| `SAP Code` | Text | Yes | Brand-specific SAP code |
+| `Priority` | Number | Yes | Lower number = Higher priority |
+| `Active` | Checkbox | Yes | Enables mapping |
+| `Notes` | Text | No | Usage notes |
+
+### Mapping History (05d Mapping History)
+
+| Column | Type | Required | Description |
+|--------|------|----------|-------------|
+| `History ID` | Text | Yes | Unique identifier (HIST-NNNN) |
+| `Ingest Line ID` | Text | No | Link to source line |
+| `Nesting Description` | Text | Yes | Original description |
+| `Canonical Code` | Text | No | Resolved canonical code |
+| `SAP Code` | Text | No | Resolved SAP code |
+| `Decision` | Picklist | Yes | FOUND, OVERRIDE, EXCEPTION |
+| `User ID` | Contact | Auto | Who authorized (if manual) |
+| `Trace ID` | Text | Yes | System trace |
+| `Created At` | DateTime | Auto | Processing timestamp |
+| `Notes` | Text | No | Decision context |
+
+### Mapping Exception (05e Mapping Exception)
+
+| Column | Type | Required | Description |
+|--------|------|----------|-------------|
+| `Exception ID` | Text | Yes | Unique identifier (MEX-NNNN) |
+| `Ingest Line ID` | Text | No | Link to source line |
+| `Nesting Description` | Text | Yes | Unmapped description |
+| `Status` | Picklist | Yes | OPEN, RESOLVED, IGNORED |
+| `Assigned To` | Contact | No | Responsible user |
+| `Created At` | DateTime | Auto | Creation timestamp |
+| `Trace ID` | Text | Yes | System trace |
+| `Resolution Notes` | Text | No | Fix details |
+
+### Parsed BOM (06a Parsed BOM)
+
+| Column | Type | Required | Description |
+|--------|------|----------|-------------|
+| `BOM Line ID` | Text | Yes | Unique identifier (BOM-NNNN) |
+| `Nest Session ID` | Text | Yes | Link to nesting session |
+| `Line Number` | Number | Yes | Sequential line number |
+| `Material Type` | Picklist | Yes | PROFILE, CONSUMABLE, ACCESSORY |
+| `Nesting Description` | Text | Yes | Normalized description (lowercase, trimmed) |
+| `Canonical Code` | Text | No | Mapped canonical code |
+| `SAP Code` | Text | No | Mapped SAP code |
+| `Quantity` | Number | Yes | Raw quantity |
+| `UOM` | Picklist | Yes | Raw unit of measure |
+| `Canonical Quantity` | Number | Yes | Converted quantity |
+| `Canonical UOM` | Picklist | Yes | Converted UOM |
+| `Mapping Decision` | Text | Yes | AUTOMATIC, OVERRIDE, MANUAL |
+| `History ID` | Text | No | Link to mapping history |
+| `Created At` | DateTime | Auto | Creation timestamp |
+| `Trace ID` | Text | Yes | System trace |
 
 ---
 

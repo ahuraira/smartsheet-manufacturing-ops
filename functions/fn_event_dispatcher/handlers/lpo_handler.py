@@ -32,6 +32,12 @@ from shared import (
     ReasonCode,
     ExceptionSeverity,
     ExceptionSource,
+    # LPO Folder Generators
+    generate_lpo_folder_path,
+    generate_lpo_folder_url,
+    
+    # Shared attachment extraction (v1.6.3)
+    extract_row_attachments_as_files,
     # File attachment models
     FileAttachment,
     FileType,
@@ -87,26 +93,23 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
         hold_reason = get_cell_value_by_logical_name(row_data, sheet_logical, "HOLD_REASON")
         remarks = get_cell_value_by_logical_name(row_data, sheet_logical, "REMARKS")
         
-        # Fetch row attachments from Smartsheet
-        files: List[FileAttachment] = []
-        try:
-            attachments = client.get_row_attachments(event.sheet_id, event.row_id)
-            for att in attachments:
-                # Convert Smartsheet attachment to FileAttachment
-                file_url = att.get("url") or att.get("attachmentUrl")
-                file_name = att.get("name") or att.get("fileName")
-                if file_url:
-                    files.append(FileAttachment(
-                        file_type=FileType.LPO,
-                        file_url=file_url,
-                        file_name=file_name
-                    ))
-            logger.info(f"[{trace_id}] Fetched {len(files)} attachments from staging row")
-        except Exception as att_err:
-            logger.warning(f"[{trace_id}] Failed to fetch attachments: {att_err}")
+        # =====================================================================
+        # Multi-File Attachment Extraction (SOTA)
+        # Uses shared helper for DRY principle (v1.6.3)
+        # =====================================================================
+        files = extract_row_attachments_as_files(
+            client=client,
+            sheet_id=event.sheet_id,
+            row_id=event.row_id,
+            file_type=FileType.LPO, # Default to LPO type, user can override later
+            trace_id=trace_id
+        )
         
         # Build request with idempotency key
-        client_request_id = f"staging-{event.row_id}-{event.timestamp_utc or 'unknown'}"
+        # CRITICAL: Use deterministic client_request_id (no timestamp!)
+        # Same staging row must always map to same idempotency key
+        # This prevents duplicate creation on webhook retries (fixes v1.6.4)
+        client_request_id = f"staging-lpo-{event.row_id}"
         
         try:
             request = LPOIngestRequest(

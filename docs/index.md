@@ -1,6 +1,6 @@
 # 📚 Ducts Manufacturing Inventory Management - Documentation Hub
 
-> **Version:** 1.5.0 | **Last Updated:** 2026-01-22 | **Status:** Active Development
+> **Version:** 1.6.3 | **Last Updated:** 2026-01-29 | **Status:** Active Development
 
 Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory Management System. This documentation follows the [Diátaxis framework](https://diataxis.fr/) to organize content by user needs: **Tutorials**, **How-to Guides**, **Reference**, and **Explanation**.
 

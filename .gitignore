@@ -8,8 +8,10 @@ dist/
 build/
 *.egg-info/
 
-# Virtual environments
+# Virtual environments (OS-specific)
 venv/
+venv_linux/
+venv_macos/
 env/
 .venv/
 
@@ -67,3 +69,18 @@ test_results_full.log
 
 #VSCode
 .vscode
+
+#Recovered Windows Chats
+recovered_windows_chats
+
+#PDFs
+*.pdf
+
+#Functions
+functions/.venv
+
+#Tests
+functions/tests/conftest.py.bak
+
+#Scripts
+scripts/

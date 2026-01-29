@@ -188,7 +188,10 @@ class TagIngestRequest(BaseModel):
     required_area_m2: float
     requested_delivery_date: str  # ISO format date
     
-    # File handling - either URL or base64 content
+    # Multi-file support (SOTA - v1.6.3)
+    files: List["FileAttachment"] = Field(default_factory=list)
+    
+    # Legacy single-file fields (backward compatibility)
     file_url: Optional[str] = None
     file_content: Optional[str] = None  # Base64 encoded file content
     original_file_name: Optional[str] = None
@@ -202,6 +205,22 @@ class TagIngestRequest(BaseModel):
     user_remarks: Optional[str] = None  # User-entered remarks
     
     metadata: Optional[Dict[str, Any]] = None
+    
+    def get_all_files(self) -> List["FileAttachment"]:
+        """Get all files including legacy single-file fields (DRY - matches LPOIngestRequest)."""
+        all_files = list(self.files)
+        
+        # Convert legacy fields to FileAttachment if present
+        if self.file_url or self.file_content:
+            legacy_file = FileAttachment(
+                file_type=FileType.OTHER,  # Tags don't have typed files like LPO
+                file_url=self.file_url,
+                file_content=self.file_content,
+                file_name=self.original_file_name
+            )
+            all_files.insert(0, legacy_file)
+        
+        return all_files
 
 
 class TagIngestResponse(BaseModel):

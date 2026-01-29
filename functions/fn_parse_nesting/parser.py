@@ -156,7 +156,8 @@ class NestingFileParser:
                         dtype=str,    # Read all as strings initially
                     )
                     # Convert back to appropriate types for numeric operations
-                    df = df.apply(pd.to_numeric, errors='ignore')
+                    # Using lambda to ensure errors='ignore' is passed correctly in pandas 2.x
+                    df = df.apply(lambda col: pd.to_numeric(col, errors='coerce').fillna(col))
                     self._workbook[key] = df
                     logger.debug(f"Loaded sheet '{sheet_name}' with {len(df)} rows")
                 else:

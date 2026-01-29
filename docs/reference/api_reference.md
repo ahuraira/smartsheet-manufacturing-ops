@@ -1,6 +1,6 @@
 # 📘 API Reference
 
-> **Document Type:** Reference | **Version:** 1.5.0 | **Last Updated:** 2026-01-22
+> **Document Type:** Reference | **Version:** 1.6.3 | **Last Updated:** 2026-01-29
 
 This document provides complete API documentation for all Azure Functions endpoints in the Ducts Manufacturing Inventory Management System.
 
@@ -17,7 +17,7 @@ This document provides complete API documentation for all Azure Functions endpoi
    - [LPO Ingestion](#lpo-ingestion-v120) (v1.2.0)
    - [LPO Update](#lpo-update-v120) (v1.2.0)
    - [Production Scheduling](#production-scheduling-v130) (v1.3.0)
-   - [Nesting Parser](#nesting-parser-v131) (v1.3.1)
+   - [Nesting Parser](#nesting-parser-v200) (v2.0.0)
    - [Event Dispatcher](#event-dispatcher-v140) (v1.4.0)
 6. [Webhook Management](#webhook-management-function_adapter) (function_adapter)
 7. [Error Handling](#error-handling)
@@ -217,17 +217,17 @@ Content-Type: application/json
   "lpo_sap_reference": "SAP-001",
   "required_area_m2": 120.25,
   "requested_delivery_date": "2026-02-01",
-  "file_url": "https://tenant.sharepoint/.../TAG-123.xlsx",
-  "file_content": "base64-encoded-file-content...",
-  "original_file_name": "TAG-123_cutexport_v1.xlsx",
+  "files": [
+    {
+      "file_type": "tag_sheet",
+      "file_content": "base64-content...",
+      "file_name": "TAG-123.xlsx"
+    }
+  ],
   "uploaded_by": "user@company.com",
   "tag_name": "TAG-123 Rev A",
   "received_through": "Email",
-  "user_remarks": "Urgent delivery needed",
-  "metadata": {
-    "truck_size": "small",
-    "notes": "urgent"
-  }
+  "user_remarks": "Urgent delivery needed"
 }
 ```
 
@@ -242,14 +242,16 @@ Content-Type: application/json
 | `lpo_sap_reference` | string | No² | SAP reference for the LPO |
 | `required_area_m2` | number | Yes | Required area in square meters |
 | `requested_delivery_date` | string (ISO) | Yes | Delivery date in ISO format (YYYY-MM-DD) |
-| `file_url` | string (URL) | No³ | URL to the tag sheet file |
-| `file_content` | string (base64) | No³ | Base64-encoded file content (alternative to file_url) |
-| `original_file_name` | string | No | Original filename for display |
+| `files` | array | Yes* | List of files (see FileAttachment). *At least 1 required. |
+| `file_url` | string (URL) | Depr. | Legacy single file URL support |
+| `file_content` | string (b64) | Depr. | Legacy single file content support |
 | `uploaded_by` | string (email) | Yes | User who uploaded the tag |
 | `tag_name` | string | No | Display name for the tag |
 | `received_through` | string | No | How the tag was received: `Email`, `Whatsapp`, or `API` (default) |
 | `user_remarks` | string | No | User-entered remarks (separate from system traces) |
 | `metadata` | object | No | Additional metadata (free-form) |
+
+> **Note (v1.6.3):** The system implements **Robust Attachment Handling**. Pass any valid URL in `file_url`; if the URL exceeds Smartsheet's 500-character limit, the system automatically downloads and re-uploads the file to ensure successful attachment.
 
 > ³ Either `file_url` or `file_content` can be provided for file hash calculation and attachment
 
@@ -721,7 +723,7 @@ Content-Type: application/json
 
 ---
 
-### Nesting Parser (v1.5.0)
+### Nesting Parser (v2.0.0)
 
 **Orchestration Logic (v2.0.0)**: SOTA implementation with robust validation and idempotency.
 
@@ -864,6 +866,12 @@ Or with base64:
       }
     ]
   },
+  "bom_processing": {
+    "total_lines": 50,
+    "mapped_lines": 48,
+    "failed_lines": 2,
+    "created_bom_ids": ["BOM-1001", "BOM-1002"]
+  },
   "warnings": [],
   "trace_id": "trace-abc123def456"
 }
@@ -901,6 +909,73 @@ When critical data is missing (e.g., Tag ID):
 ```
 
 > **Note:** The function returns 200 even for parsing errors to provide detailed JSON response. The `status` field indicates SUCCESS, PARTIAL, or ERROR.
+
+---
+
+### Material Mapping (v1.6.0)
+
+Deterministic lookup service for resolving raw nesting descriptions to canonical material codes and SAP codes.
+
+**Key Features:**
+- **Audit Trail:** Every lookup is logged to `MAPPING_HISTORY` (05d).
+- **Idempotency:** Re-processing the same file/line uses cached history to prevent duplicate entries and ensure consistency.
+- **Overrides:** Applies LPO > PROJECT > CUSTOMER precedence.
+
+#### Lookup Material
+
+Resolves a material description to its canonical code, applying overrides based on LPO, Project, or Customer.
+
+#### Request
+
+```http
+POST /api/map/lookup
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "nesting_description": "PIR 25mm",
+  "lpo_id": "LPO-100",
+  "project_name": "Villa 34",
+  "customer_name": "BuildCo"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `nesting_description` | string | Yes | Raw description from nesting software |
+| `lpo_id` | string | No | Context for LPO-specific overrides |
+| `project_name` | string | No | Context for Project overrides |
+| `customer_name` | string | No | Context for Customer overrides |
+
+#### Response: Success (200)
+
+```json
+{
+  "canonical_code": "PIR-25",
+  "sap_code": "SAP-00123",
+  "uom": "Sqm",
+  "source": "OVERRIDE_LPO",
+  "mapping_id": "MAP-0042",
+  "trace_id": "trace-abc..."
+}
+```
+
+#### Response: Not Found (200)
+
+Returns nulls if no mapping exists (and logs MAPPING_EXCEPTION).
+
+```json
+{
+  "canonical_code": null,
+  "sap_code": null,
+  "uom": null,
+  "source": "UNKNOWN",
+  "trace_id": "trace-abc..."
+}
+```
 
 ---
 

@@ -146,6 +146,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             column_id = str(event.get("columnId", "")) if event.get("columnId") else None
             user_id = event.get("userId")  # numeric user ID
             
+            # Context Validation (Log Noise Reduction)
+            # Only process events that have both sheet_id and row_id associated
+            has_context = bool(scope_object_id and row_id)
+            if not has_context:
+                logger.debug(f"[{trace_id}] Skipping event {idx}: missing context (sheet={scope_object_id}, row={row_id})")
+                skipped_count += 1
+                continue
+            
             # System Actor Check - skip loop
             if is_system_actor(user_id):
                 logger.info(f"[{trace_id}] Skipping system actor event: {user_id}")

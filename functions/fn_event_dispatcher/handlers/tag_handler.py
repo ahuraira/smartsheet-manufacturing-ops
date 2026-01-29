@@ -8,10 +8,11 @@ RESILIENCE:
 - All column access by ID (not name)
 - Manifest provides ID mapping
 - Validation errors create exceptions (SOTA)
+- Multi-file attachment support (v1.6.3)
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import ValidationError
 
 import sys
@@ -29,6 +30,11 @@ from shared import (
     ReasonCode,
     ExceptionSeverity,
     ExceptionSource,
+    # Multi-file support (DRY - reuse from LPO)
+    FileAttachment,
+    FileType,
+    # Shared attachment extraction (v1.6.3)
+    extract_row_attachments_as_files,
 )
 from ..models import RowEvent, DispatchResult
 
@@ -42,8 +48,9 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
     Flow:
     1. Fetch row data by ID
     2. Extract values by column ID (via manifest)
-    3. Build TagIngestRequest
-    4. Call fn_ingest_tag directly
+    3. Fetch row attachments (multi-file support)
+    4. Build TagIngestRequest
+    5. Call fn_ingest_tag directly
     """
     trace_id = event.trace_id or generate_trace_id()
     logger.info(f"[{trace_id}] Processing Tag ingest for row {event.row_id}")
@@ -65,12 +72,28 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
         sheet_logical = "02H_TAG_SHEET_STAGING"
         
         # Extract values by column ID
-        lpo_sap_ref = get_cell_value_by_logical_name(row_data, sheet_logical, "LPO_SAP_REFERENCE")
-        required_area = get_cell_value_by_logical_name(row_data, sheet_logical, "REQUIRED_AREA_M2")
-        delivery_date = get_cell_value_by_logical_name(row_data, sheet_logical, "REQUESTED_DELIVERY_DATE")
+        lpo_sap_ref = get_cell_value_by_logical_name(row_data, sheet_logical, "LPO_SAP_REFERENCE_LINK")
+        required_area = get_cell_value_by_logical_name(row_data, sheet_logical, "ESTIMATED_QUANTITY")
+        delivery_date = get_cell_value_by_logical_name(row_data, sheet_logical, "REQUIRED_DELIVERY_DATE")
+        tag_name = get_cell_value_by_logical_name(row_data, sheet_logical, "TAG_SHEET_NAME_REV")
+        
+        # =====================================================================
+        # Multi-File Attachment Extraction (SOTA - v1.6.3)
+        # Uses shared helper for DRY principle
+        # =====================================================================
+        files = extract_row_attachments_as_files(
+            client=client,
+            sheet_id=event.sheet_id,
+            row_id=event.row_id,
+            file_type=FileType.OTHER,
+            trace_id=trace_id
+        )
         
         # Build request
-        client_request_id = f"staging-{event.row_id}-{event.timestamp_utc or 'unknown'}"
+        # CRITICAL: Use deterministic client_request_id (no timestamp!)
+        # Same staging row must always map to same idempotency key
+        # This prevents duplicate creation on webhook retries (fixes v1.6.4)
+        client_request_id = f"staging-tag-{event.row_id}"
         
         try:
             request = TagIngestRequest(
@@ -79,6 +102,8 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
                 required_area_m2=float(required_area or 0),
                 requested_delivery_date=delivery_date,
                 uploaded_by=event.actor_id or "system",
+                tag_name=tag_name,  # Now populated from staging
+                files=files,  # Multi-file support
             )
         except ValidationError as e:
             logger.warning(f"[{trace_id}] Validation error: {e}")
@@ -135,3 +160,4 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
             message=str(e),
             trace_id=trace_id
         )
+

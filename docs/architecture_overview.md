@@ -151,16 +151,16 @@ flowchart TB
             FN8[fn_schedule_tag]
             FN9[fn_parse_nesting]
             FN10[fn_event_dispatcher]
+            FN11[fn_map_lookup]
             FN3[fn_allocate]
             FN4[fn_pick_confm]
             FN5[fn_consume]
             FN6[fn_create_do]
         end
-        subgraph Webhooks["Webhook Adapter"]
             WH1[fn_webhook_receiver]
             WH2[fn_event_processor]
         end
-        Shared[📦 Shared Library<br/>models • client • helpers]
+        Shared[📦 Shared Library<br/>models • client • helpers • unit service]
     end
     
     subgraph Data["🗄️ DATA LAYER"]

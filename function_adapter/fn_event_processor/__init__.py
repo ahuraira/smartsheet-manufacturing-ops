@@ -170,6 +170,20 @@ def main(msg: func.ServiceBusMessage) -> None:
         status = result.get("status", "UNKNOWN")
         logger.info(f"[{trace_id}] Processing complete: {status}")
         
+        # FIX: Update event log status (v1.6.4)
+        # Closes the audit trail gap where events stayed PENDING forever
+        try:
+            from shared.event_log import update_event_status
+            event_id = event.get("event_id")
+            if event_id:
+                final_status = "SUCCESS" if status not in ("ERROR", "UNKNOWN") else "FAILED"
+                error_msg = result.get("message") if status == "ERROR" else None
+                update_event_status(event_id, final_status, error_msg)
+                logger.debug(f"[{trace_id}] Event status updated to {final_status}")
+        except Exception as update_err:
+            # Don't fail the whole process if status update fails
+            logger.warning(f"[{trace_id}] Failed to update event status: {update_err}")
+        
         # If core function failed, raise to trigger Service Bus retry
         if status == "ERROR":
             error_msg = result.get("message", "Unknown error")

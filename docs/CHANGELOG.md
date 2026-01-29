@@ -10,11 +10,145 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- `fn_parse_nesting` - Nesting file parser function
 - `fn_allocate` - Inventory allocation function
 - `fn_pick_confirm` - Pick confirmation function
 - `fn_submit_consumption` - Consumption submission function
 - `fn_create_do` - Delivery order creation function
+
+---
+
+## [1.6.4] - 2026-01-29
+
+### Fixed
+- **CRITICAL: Duplicate Record Creation** - Fixed non-deterministic `client_request_id` in handlers:
+  - Removed timestamp from idempotency key: `staging-tag-{row_id}` instead of `staging-{row_id}-{timestamp}`
+  - Same staging row now ALWAYS produces the same idempotency key
+  - Prevents duplicate LPO/Tag creation on webhook retries or rapid event succession
+  - Affected files: `tag_handler.py`, `lpo_handler.py`
+
+- **LPO Over-Allocation** - Fixed balance check to include allocated quantity:
+  - Formula now correctly uses: `delivered + allocated + planned <= PO Quantity`
+  - Prevents tags from over-committing an LPO before delivery
+  - Implements architecture spec §2 Step 2
+
+### Changed
+- **Override Table Caching** - `MappingService` now caches `MAPPING_OVERRIDE` sheet:
+  - Prevents N+1 API calls during BOM processing (was 1 call per line)
+  - Uses same 5-minute TTL as Material Master cache
+  - Significantly reduces timeout risk for large BOMs (>100 lines)
+  - **Date Logic Implemented**: Now correctly respects `EFFECTIVE_FROM` and `EFFECTIVE_TO` columns (v1.6.4)
+
+- **Event Status Tracking** - `fn_event_processor` now updates event_log status:
+  - Events now show `SUCCESS` or `FAILED` instead of staying `PENDING` forever
+  - Closes the audit trail gap in the function adapter
+  - Non-blocking: status update failure doesn't fail the event processing
+
+---
+
+## [1.6.3] - 2026-01-29
+
+### Added
+- **Multi-File Attachment Support for Tags** (SOTA - DRY principle):
+  - `TagIngestRequest` now accepts `files: List[FileAttachment]` (reuses `FileAttachment` model).
+  - `get_all_files()` helper method for backward compatibility with legacy single-file fields.
+  - `fn_ingest_tag` uses `compute_combined_file_hash()` for duplicate detection (same as LPO).
+  - All files attached to Tag Registry row after creation.
+  - `tag_handler.py` fetches ALL row attachments from staging and passes them to ingestion.
+- **Webhook Log Filtering** (SOTA - Log Hygiene):
+  - `fn_webhook_receiver` now filters out events missing context (`sheet_id` or `row_id`).
+  - Skips are logged at `DEBUG` level to reduce noise in main logs.
+- **Robust Attachment Handling**:
+  - Fixed `get_row_attachments` to fetch individual details (resolves missing URLs).
+  - `attach_url_to_row` automatically downloads/re-uploads files if URL > 500 chars (overcoming Smartsheet API limit).
+  - Refactored `lpo_handler.py` to use shared `extract_row_attachments_as_files` helper.
+
+### Changed
+- **Tag Name Mapping**: `tag_handler.py` now extracts `Tag Sheet Name/ Rev` from staging and populates `tag_name`.
+
+---
+
+## [1.6.2] - 2026-01-28
+
+### Fixed
+- **Tag Ingestion Validation** - Fixed `fn_ingest_tag` handler column mapping:
+  - Corrected `REQUESTED_DELIVERY_DATE` -> `REQUIRED_DELIVERY_DATE`
+  - Corrected `REQUIRED_AREA_M2` -> `ESTIMATED_QUANTITY`
+  - Corrected `LPO_SAP_REFERENCE` -> `LPO_SAP_REFERENCE_LINK`
+  - Resolves "Validation error in staging row" due to `None` values caused by incorrect logical names.
+
+---
+
+## [1.6.1] - 2026-01-28
+
+### Added
+- **`UnitService` Module** (`shared/unit_service.py`) - Centralized unit conversion:
+  - Supports explicit conversion factors from Material Master
+  - Fallback to standard conversions (mm ↔ m, cm ↔ m)
+  - Used by `BOMOrchestrator` for accurate canonical quantities
+
+### Changed
+- **Mapping Service Idempotency** - Now checks `Mapping History` before processing:
+  - Prevents duplicate history rows for re-uploaded files
+  - Return existing decision if `ingest_line_id` already exists
+- **BOM Orchestrator** - Now integrates `UnitService` for quantity calculation
+- **History Logging** - Added persistence of `UOM` and `Conversion Factor` to `Mapping History` sheet
+
+### Fixed
+- **Idempotency Data Loop** - `MappingResult` now reconstructs UOM/Factor from history to ensure consistent BOM generation on replay
+
+---
+
+## [1.6.0] - 2026-01-27
+
+### Added
+
+#### Canonical Material Mapping System
+- **`fn_map_lookup`** - New function for material mapping:
+  - Endpoint: `POST /api/map/lookup`
+  - Deterministic lookup: nesting description → canonical code → SAP code
+  - Override support: LPO > PROJECT > CUSTOMER scope precedence
+  - Thread-safe in-memory caching with TTL (5 min)
+  - All lookups logged to Mapping History for audit trail
+  - Unknown materials queued to Mapping Exception sheet
+
+- **BOM Generator (`fn_parse_nesting/bom_generator.py`)** - Flattens nesting data:
+  - Extracts panel materials, profiles, accessories, consumables
+  - Normalizes descriptions (lowercase, trim, collapse spaces)
+  - Returns typed `BOMLine` objects ready for mapping
+
+- **BOM Orchestrator (`fn_parse_nesting/bom_orchestrator.py`)** - Full workflow:
+  - Generates BOM lines from parsed record
+  - Maps each line via mapping service
+  - Writes results to `06a Parsed BOM` sheet
+  - Returns processing stats (mapped/exception counts)
+
+- **Parser Integration** - BOM processing now runs after parsing:
+  - New step 7e in `fn_parse_nesting` orchestration
+  - Non-blocking: BOM failures don't fail the parse
+  - Response includes `bom_processing` stats object
+
+#### Material Master Seeded (16 entries)
+| Category | Materials |
+|----------|-----------|
+| Profiles (7) | Joint, Joint-PVC, Bayonet, U, F, H, Other |
+| Consumables (4) | Silicone, Aluminum Tape, Glue Junction, Glue Flange |
+| Accessories (2) | GI Corners, PVC Corners |
+| Machine (3) | Blade 45, Blade 90, Blade 2x45 (not tracked) |
+
+#### New Smartsheet Columns
+- `05a Material Master`: `SAP UOM`, `Conversion Factor`
+
+#### New SmartsheetClient Methods
+- `get_all_rows()` - Fetch all rows from a sheet
+- `add_rows_bulk()` - Add multiple rows in batches (with retry)
+
+### Changed
+- **Parser response** now includes `bom_processing` object with mapping stats
+- **Material Master** extended with unit conversion columns
+
+### Scripts
+- `scripts/add_material_master_columns.py` - Adds SAP UOM + Conversion Factor
+- `scripts/seed_material_master.py` - Populates Material Master with known materials
 
 ---
 
@@ -42,6 +176,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Duplicate Tag Safety**: `validate_tag_exists` now detects duplicate Tag IDs and fails safely (prevents ambiguous updates).
 - **User Validation**: `uploaded_by` falls back to default admin email if input is invalid/system (ensures API calls succeed).
 - **Unit Tests**: Added test case for duplicate tag detection logic.
+
+### Tests
+- **Nesting Validation**: 21 new tests covering duplicate detection and orchestration failures.
+- **Acceptance Criteria**: All 7 scenarios from specification Section 10 now covered.
+
+### Fixed (Cross-Platform Compatibility)
+- **pandas 2.x**: Fixed `df.apply(pd.to_numeric)` syntax for pandas 2.x compatibility.
+- **Test Assertions**: Corrected `generate_lpo_folder_path` tests (returns relative path, not URL).
+- **Pydantic 2.x**: Updated HTTP 400→422 expectation for validation errors.
+
+### Infrastructure
+- **Cross-Platform Test Runner**: Added `scripts/test.sh` with OS auto-detection.
+- **.gitignore**: Added `venv_linux/`, `venv_macos/` for OS-specific environments.
+- **Total Tests**: 387 passing.
+
+
 
 ## [1.4.2] - 2026-01-22
 
@@ -477,6 +627,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 1.6.0 | 2026-01-27 | Canonical Material Mapping, BOM Generator, fn_map_lookup |
 | 1.5.0 | 2026-01-22 | Nesting Parser Orchestration (SOTA Integration) |
 | 1.4.2 | 2026-01-22 | Service Bus queue fix, LPO Handler improvements |
 | 1.4.0 | 2026-01-20 | Event Dispatcher, ID-based routing, event_routing.json config |

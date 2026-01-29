@@ -50,31 +50,41 @@ class TestGetRowAttachments:
 
     @patch('shared.smartsheet_client.requests.request')
     def test_get_row_attachments_success(self, mock_request, client):
-        """Test successful attachment fetch."""
-        # Setup mock response
-        mock_response = MagicMock()
-        mock_response.ok = True
-        mock_response.json.return_value = {
+        """Test successful attachment fetch with detail enrichment."""
+        # Setup mock responses: list + 2 detail calls
+        list_response = MagicMock()
+        list_response.ok = True
+        list_response.json.return_value = {
             "data": [
-                {"id": 101, "name": "invoice.pdf", "url": "http://link/1"},
-                {"id": 102, "name": "specs.docx", "url": "http://link/2"}
+                {"id": 101, "name": "invoice.pdf"},
+                {"id": 102, "name": "specs.docx"}
             ],
             "pageNumber": 1,
             "totalPages": 1
         }
-        mock_request.return_value = mock_response
+        
+        detail_response_1 = MagicMock()
+        detail_response_1.ok = True
+        detail_response_1.json.return_value = {
+            "id": 101, "name": "invoice.pdf", "url": "http://link/1"
+        }
+        
+        detail_response_2 = MagicMock()
+        detail_response_2.ok = True
+        detail_response_2.json.return_value = {
+            "id": 102, "name": "specs.docx", "url": "http://link/2"
+        }
+        
+        # Return different responses for list and detail calls
+        mock_request.side_effect = [list_response, detail_response_1, detail_response_2]
 
         attachments = client.get_row_attachments("TEST_SHEET", 999)
 
         assert len(attachments) == 2
         assert attachments[0]["name"] == "invoice.pdf"
+        assert attachments[0]["url"] == "http://link/1"
         assert attachments[1]["id"] == 102
-        
-        # Verify URL construction
-        args, kwargs = mock_request.call_args
-        # requests.request called with kwargs
-        assert kwargs.get("method") == "GET"
-        assert "/sheets/123456789/rows/999/attachments" in kwargs.get("url", "")
+        assert attachments[1]["url"] == "http://link/2"
 
     @patch('shared.smartsheet_client.requests.request')
     def test_get_row_attachments_pagination(self, mock_request, client):

@@ -31,7 +31,8 @@ FOLDER_STRUCTURE = [
     "01. Commercial and Demand",
     "02. Tag Sheet Registry",
     "03. Production Planning",
-    "04. Production and Delivery"
+    "04. Production and Delivery",
+    "05. Material Mapping"
 ]
 
 # Sheet definitions based on current metadata
@@ -365,6 +366,102 @@ SHEET_DEFINITIONS = {
             {"title": "SLA Due", "type": "DATE"},
             {"title": "Attachment Links", "type": "TEXT_NUMBER"},
             {"title": "Resolution Action", "type": "TEXT_NUMBER"}
+        ]
+    },
+    
+    # 05. Material Mapping (Canonical Material Mapping Specification)
+    # All columns TEXT_NUMBER to avoid type mismatch - data consistency maintained by scripts
+    "05a Material Master": {
+        "folder": "05. Material Mapping",
+        "columns": [
+            {"title": "Mapping ID", "type": "TEXT_NUMBER"},
+            {"title": "Nesting Description", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Canonical Code", "type": "TEXT_NUMBER"},
+            {"title": "Default SAP Code", "type": "TEXT_NUMBER"},
+            {"title": "UOM", "type": "TEXT_NUMBER"},
+            {"title": "SAP UOM", "type": "TEXT_NUMBER"},
+            {"title": "Conversion Factor", "type": "TEXT_NUMBER"},
+            {"title": "Not Tracked", "type": "TEXT_NUMBER"},
+            {"title": "Active", "type": "TEXT_NUMBER"},
+            {"title": "Notes", "type": "TEXT_NUMBER"},
+            {"title": "Updated At", "type": "TEXT_NUMBER"},
+            {"title": "Updated By", "type": "TEXT_NUMBER"}
+        ]
+    },
+    "05b Mapping Override": {
+        "folder": "05. Material Mapping",
+        "columns": [
+            {"title": "Override ID", "type": "TEXT_NUMBER"},
+            {"title": "Scope Type", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Scope Value", "type": "TEXT_NUMBER"},
+            {"title": "Nesting Description", "type": "TEXT_NUMBER"},
+            {"title": "Canonical Code", "type": "TEXT_NUMBER"},
+            {"title": "SAP Code", "type": "TEXT_NUMBER"},
+            {"title": "Active", "type": "TEXT_NUMBER"},
+            {"title": "Effective From", "type": "TEXT_NUMBER"},
+            {"title": "Effective To", "type": "TEXT_NUMBER"},
+            {"title": "Created By", "type": "TEXT_NUMBER"},
+            {"title": "Created At", "type": "TEXT_NUMBER"}
+        ]
+    },
+    "05c LPO Material Brand Map": {
+        "folder": "05. Material Mapping",
+        "columns": [
+            {"title": "Map ID", "type": "TEXT_NUMBER"},
+            {"title": "LPO ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Canonical Code", "type": "TEXT_NUMBER"},
+            {"title": "SAP Code", "type": "TEXT_NUMBER"},
+            {"title": "Priority", "type": "TEXT_NUMBER"},
+            {"title": "Active", "type": "TEXT_NUMBER"},
+            {"title": "Notes", "type": "TEXT_NUMBER"}
+        ]
+    },
+    "05d Mapping History": {
+        "folder": "05. Material Mapping",
+        "columns": [
+            {"title": "History ID", "type": "TEXT_NUMBER"},
+            {"title": "Ingest Line ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Nesting Description", "type": "TEXT_NUMBER"},
+            {"title": "Canonical Code", "type": "TEXT_NUMBER"},
+            {"title": "SAP Code", "type": "TEXT_NUMBER"},
+            {"title": "Decision", "type": "TEXT_NUMBER"},
+            {"title": "User ID", "type": "TEXT_NUMBER"},
+            {"title": "Trace ID", "type": "TEXT_NUMBER"},
+            {"title": "Created At", "type": "TEXT_NUMBER"},
+            {"title": "Notes", "type": "TEXT_NUMBER"}
+        ]
+    },
+    "05e Mapping Exception": {
+        "folder": "05. Material Mapping",
+        "columns": [
+            {"title": "Exception ID", "type": "TEXT_NUMBER"},
+            {"title": "Ingest Line ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Nesting Description", "type": "TEXT_NUMBER"},
+            {"title": "Status", "type": "TEXT_NUMBER"},
+            {"title": "Assigned To", "type": "TEXT_NUMBER"},
+            {"title": "Created At", "type": "TEXT_NUMBER"},
+            {"title": "Trace ID", "type": "TEXT_NUMBER"},
+            {"title": "Resolution Notes", "type": "TEXT_NUMBER"}
+        ]
+    },
+    "06a Parsed BOM": {
+        "folder": "05. Material Mapping",
+        "columns": [
+            {"title": "BOM Line ID", "type": "TEXT_NUMBER"},
+            {"title": "Nest Session ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Line Number", "type": "TEXT_NUMBER"},
+            {"title": "Material Type", "type": "TEXT_NUMBER"},
+            {"title": "Nesting Description", "type": "TEXT_NUMBER"},
+            {"title": "Canonical Code", "type": "TEXT_NUMBER"},
+            {"title": "SAP Code", "type": "TEXT_NUMBER"},
+            {"title": "Quantity", "type": "TEXT_NUMBER"},
+            {"title": "UOM", "type": "TEXT_NUMBER"},
+            {"title": "Canonical Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Canonical UOM", "type": "TEXT_NUMBER"},
+            {"title": "Mapping Decision", "type": "TEXT_NUMBER"},
+            {"title": "History ID", "type": "TEXT_NUMBER"},
+            {"title": "Created At", "type": "TEXT_NUMBER"},
+            {"title": "Trace ID", "type": "TEXT_NUMBER"}
         ]
     }
 }

@@ -342,14 +342,13 @@ class TestGenerateLpoFolderPath:
         
         result = generate_lpo_folder_path(
             sap_reference="PTE-185",
-            customer_name="Acme Corp",
-            base_url="https://sharepoint.com/docs"
+            customer_name="Acme Corp"
         )
         
+        # Returns relative path, not full URL
+        assert result.startswith("LPOs/PTE-185_")
         assert "PTE-185" in result
         assert "Acme" in result
-        assert "/LPOs/" in result
-        assert result.startswith("https://sharepoint.com/docs")
     
     def test_special_chars_in_customer_name(self):
         """Test customer names with special chars are sanitized."""
@@ -357,12 +356,11 @@ class TestGenerateLpoFolderPath:
         
         result = generate_lpo_folder_path(
             sap_reference="PTE-185",
-            customer_name="Test/Company:Ltd",
-            base_url="https://test.com"
+            customer_name="Test/Company:Ltd"
         )
         
-        # Extract just the folder name portion after /LPOs/
-        folder_name = result.split("/LPOs/")[1]
+        # Extract just the folder name portion after LPOs/
+        folder_name = result.split("LPOs/")[1]
         assert "/" not in folder_name
         assert ":" not in folder_name
 

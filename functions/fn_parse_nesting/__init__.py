@@ -244,8 +244,33 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 sheets_used=impact.utilized_sheets_count,
                 wastage=efficiency.waste_pct
             )
+        
+        # 7e. Generate BOM and Map Materials
+        bom_result = None
+        try:
+            from .bom_orchestrator import process_bom_from_record
             
-        # 7e. Log User Action
+            # Get LPO ID from tag validation if available
+            lpo_id = tag_validation.lpo_id if hasattr(tag_validation, 'lpo_id') else sap_lpo_reference
+            
+            bom_result = process_bom_from_record(
+                client=client,
+                record=record,
+                nest_session_id=nest_session_id,
+                lpo_id=lpo_id,
+                trace_id=trace_id
+            )
+            
+            logger.info(
+                f"BOM processing: {bom_result.mapped_lines}/{bom_result.total_lines} mapped, "
+                f"{bom_result.exception_lines} exceptions",
+                extra={"trace_id": trace_id}
+            )
+        except Exception as bom_err:
+            # BOM processing failure should not fail the entire parse
+            logger.error(f"BOM processing failed (non-fatal): {bom_err}", extra={"trace_id": trace_id})
+            
+        # 7f. Log User Action
         log_user_action(
             client=client,
             action_type=ActionType.TAG_UPDATED,
@@ -275,8 +300,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             processing_time_ms=parse_result.processing_time_ms
         )
         
+        # Build response with optional BOM stats
+        response_data = result_wrapper.model_dump(mode="json")
+        
+        if bom_result:
+            response_data["bom_processing"] = {
+                "total_lines": bom_result.total_lines,
+                "mapped_lines": bom_result.mapped_lines,
+                "exception_lines": bom_result.exception_lines,
+                "success": bom_result.success
+            }
+        
         return func.HttpResponse(
-            body=json.dumps(result_wrapper.model_dump(mode="json"), indent=2),
+            body=json.dumps(response_data, indent=2),
             status_code=200,
             mimetype="application/json",
             headers={"x-request-id": trace_id}

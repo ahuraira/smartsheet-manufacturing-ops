@@ -165,6 +165,8 @@ from .helpers import (
     generate_lpo_folder_path,
     generate_lpo_folder_url,
     generate_lpo_subfolder_paths,
+    # Multi-file attachments (v1.6.3+)
+    extract_row_attachments_as_files,
 )
 
 # Audit utilities (DRY - shared across functions)

@@ -498,27 +498,55 @@ class SmartsheetClient:
         row_id: int
     ) -> List[Dict[str, Any]]:
         """
-        Get all attachments for a specific row.
+        Get all attachments for a specific row WITH URLs.
+        
+        NOTE: Smartsheet's list attachments endpoint only returns metadata.
+        We must fetch each attachment individually to get the actual URL.
         
         Args:
             sheet_ref: Sheet reference (logical name, physical name, or ID)
             row_id: Immutable Smartsheet row ID
         
         Returns:
-            List of attachment dictionaries with 'url', 'name', etc.
+            List of attachment dictionaries with 'url', 'name', 'id', etc.
         """
         sheet_id = self.resolve_sheet_id(sheet_ref)
-        url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}/attachments"
+        list_url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}/attachments"
         
         try:
-            response = self._make_request("GET", url)
+            response = self._make_request("GET", list_url)
             data = response.json()
-            return data.get("data", [])
+            attachment_list = data.get("data", [])
+            
+            # Smartsheet quirk: list endpoint doesn't include URLs
+            # Must fetch each attachment individually for the actual URL
+            enriched_attachments = []
+            for att in attachment_list:
+                att_id = att.get("id")
+                if att_id:
+                    try:
+                        detail = self._get_attachment_detail(sheet_id, att_id)
+                        if detail:
+                            enriched_attachments.append(detail)
+                    except Exception as e:
+                        logger.warning(f"Failed to get attachment {att_id} detail: {e}")
+                        # Fallback to basic info
+                        enriched_attachments.append(att)
+            
+            return enriched_attachments
+            
         except requests.HTTPError as e:
             if e.response is not None and e.response.status_code == 404:
                 logger.warning(f"Row {row_id} not found in sheet {sheet_id}")
                 return []
             raise
+    
+    @retry_with_backoff(max_retries=2)
+    def _get_attachment_detail(self, sheet_id: int, attachment_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch individual attachment details including URL."""
+        url = f"{self.base_url}/sheets/{sheet_id}/attachments/{attachment_id}"
+        response = self._make_request("GET", url)
+        return response.json()
 
     @retry_with_backoff(max_retries=3)
     def find_rows(
@@ -728,6 +756,62 @@ class SmartsheetClient:
         
         return result
     
+    @retry_with_backoff(max_retries=3)
+    def get_all_rows(self, sheet_ref: Union[str, int]) -> List[Dict[str, Any]]:
+        """
+        Get all rows from a sheet.
+        
+        Args:
+            sheet_ref: Sheet reference (logical name, physical name, or ID)
+            
+        Returns:
+            List of row dicts with 'id' and 'cells' keys
+        """
+        sheet_data = self.get_sheet(sheet_ref)
+        return sheet_data.get("rows", [])
+    
+    @retry_with_backoff(max_retries=3)
+    def add_rows_bulk(
+        self, 
+        sheet_ref: Union[str, int], 
+        rows: List[Dict[str, Any]],
+        batch_size: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Add multiple rows to a sheet in batches.
+        
+        Args:
+            sheet_ref: Sheet reference (logical name, physical name, or ID)
+            rows: List of row dicts with 'toBottom' and 'cells' keys
+                  Each cell should have 'columnId' and 'value'
+            batch_size: Number of rows per API call (max 500)
+            
+        Returns:
+            List of created row data
+        """
+        sheet_id = self.resolve_sheet_id(sheet_ref)
+        url = f"{self.base_url}/sheets/{sheet_id}/rows"
+        
+        created_rows = []
+        
+        # Process in batches
+        for i in range(0, len(rows), batch_size):
+            batch = rows[i:i + batch_size]
+            
+            try:
+                response = self._make_request("POST", url, json=batch)
+                result = response.json()
+                created = result.get("result", [])
+                created_rows.extend(created if isinstance(created, list) else [created])
+                
+                logger.debug(f"Added batch of {len(batch)} rows to sheet {sheet_id}")
+            except Exception as e:
+                logger.error(f"Failed to add batch starting at row {i}: {e}")
+                raise
+        
+        logger.info(f"Added {len(created_rows)} rows to sheet {sheet_id}")
+        return created_rows
+    
     # ============== Convenience Methods ==============
     # These use logical names from the Sheet and Column classes
     
@@ -752,6 +836,10 @@ class SmartsheetClient:
         """
         Attach a URL to a row in a sheet.
         
+        NOTE: Smartsheet has a 500-char limit for attachment URLs.
+        If URL is longer (e.g., temporary download URLs), we download
+        the file and re-upload as binary content.
+        
         Args:
             sheet_ref: Sheet reference (logical name, physical name, or ID)
             row_id: Row ID to attach to
@@ -763,12 +851,18 @@ class SmartsheetClient:
             Attachment info from Smartsheet API
         """
         sheet_id = self.resolve_sheet_id(sheet_ref)
+        file_name = name or url.split("/")[-1].split("?")[0][:100]  # Strip query params
+        
+        # Smartsheet API limit: attachment URLs must be <= 500 chars
+        if len(url) > 500:
+            logger.info(f"URL too long ({len(url)} chars), downloading and re-uploading as file")
+            return self._download_and_attach_file(sheet_id, row_id, url, file_name)
         
         api_url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}/attachments"
         payload = {
             "attachmentType": "LINK",
             "url": url,
-            "name": name or url.split("/")[-1][:100]  # Use last part of URL, max 100 chars
+            "name": file_name
         }
         if description:
             payload["description"] = description
@@ -843,6 +937,62 @@ class SmartsheetClient:
         logger.info(f"Attached file '{file_name}' to row {row_id} in sheet {sheet_id}")
         return result.get("result", {})
     
+    def _download_and_attach_file(
+        self,
+        sheet_id: int,
+        row_id: int,
+        url: str,
+        file_name: str
+    ) -> Dict[str, Any]:
+        """
+        Download file from URL and attach as binary content.
+        
+        Used when URL is too long (>500 chars) for Smartsheet's LINK attachment type.
+        """
+        import base64
+        import mimetypes
+        
+        # Download file
+        try:
+            self._rate_limiter.wait()
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+            file_bytes = response.content
+        except Exception as e:
+            raise SmartsheetError(f"Failed to download file from URL: {e}")
+        
+        # Guess content type
+        content_type, _ = mimetypes.guess_type(file_name)
+        content_type = content_type or "application/octet-stream"
+        
+        # Upload as binary
+        api_url = f"{self.base_url}/sheets/{sheet_id}/rows/{row_id}/attachments"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Disposition": f'attachment; filename="{file_name}"',
+            "Content-Type": content_type
+        }
+        
+        self._rate_limiter.wait()
+        upload_response = requests.post(
+            api_url,
+            headers=headers,
+            data=file_bytes,
+            timeout=60
+        )
+        
+        if not upload_response.ok:
+            try:
+                error_body = upload_response.json()
+                logger.error(f"Smartsheet API error: {upload_response.status_code} - {error_body}")
+            except Exception:
+                logger.error(f"Smartsheet API error: {upload_response.status_code} - {upload_response.text[:500]}")
+        
+        upload_response.raise_for_status()
+        result = upload_response.json()
+        
+        logger.info(f"Downloaded and attached file '{file_name}' to row {row_id}")
+        return result.get("result", {})
 
     def refresh_caches(self):
         """Clear all caches and force reload."""
