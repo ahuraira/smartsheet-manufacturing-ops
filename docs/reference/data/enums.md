@@ -1,3 +1,13 @@
+---
+title: Enumerations
+description: All enumerated types used in the system (statuses, codes, actions)
+keywords: [enums, status, codes, reason codes, action types]
+category: data-reference
+version: 1.6.9
+---
+
+[Home](../../index.md) > [Data Dictionary](./index.md) > Enumerations
+
 # Enumerations
 
 > **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06

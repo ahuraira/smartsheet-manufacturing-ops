@@ -1,3 +1,14 @@
+---
+title: Material Mapping API
+description: Deterministic lookup service for resolving nesting descriptions to canonical SAP codes
+keywords: [material, mapping, lookup, api, canonical, sap]
+category: api-reference
+version: 1.6.0+
+last_updated: 2026-02-06
+---
+
+[Home](../../index.md) > [API Reference](./index.md) > Material Mapping
+
 # Material Mapping API
 
 > **Endpoint:** `POST /api/map/lookup` | **Version:** 1.6.0+ | **Last Updated:** 2026-02-06

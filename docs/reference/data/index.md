@@ -1,3 +1,14 @@
+---
+title: Data Dictionary
+description: Complete reference for all data models, sheets, and column definitions
+keywords: [data, dictionary, models, schemas, smartsheet, reference]
+category: data-reference
+version: 1.6.9
+last_updated: 2026-02-06
+---
+
+[Home](../../index.md) > Data Dictionary
+
 # 📊 Data Dictionary
 
 > **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06

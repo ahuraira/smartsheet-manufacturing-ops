@@ -1,3 +1,14 @@
+---
+title: Production Scheduling API
+description: Schedule tags for production with automatic deadline calculation and PO validation
+keywords: [scheduling, production, api, planning, manufacturing]
+category: api-reference
+version: 1.3.0+
+last_updated: 2026-02-06
+---
+
+[Home](../../index.md) > [API Reference](./index.md) > Production Scheduling
+
 # Production Scheduling API
 
 > **Endpoint:** `POST /api/production/schedule` | **Version:** 1.3.0+ | **Last Updated:** 2026-02-06

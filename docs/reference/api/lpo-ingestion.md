@@ -1,3 +1,14 @@
+---
+title: LPO Ingestion API
+description: Create Local Purchase Order records with validation and SharePoint integration
+keywords: [lpo, purchase order, ingestion, api, validation, sharepoint]
+category: api-reference
+version: 1.2.0+
+last_updated: 2026-02-06
+---
+
+[Home](../../index.md) > [API Reference](./index.md) > LPO Ingestion
+
 # LPO Ingestion API
 
 > **Endpoint:** `POST /api/lpos/ingest` | **Version:** 1.2.0+ | **Last Updated:** 2026-02-06

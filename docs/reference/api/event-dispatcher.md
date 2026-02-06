@@ -1,3 +1,14 @@
+---
+title: Event Dispatcher API
+description: Central webhook event router with ID-based routing and handler registry
+keywords: [event, dispatcher, webhook, routing, smartsheet]
+category: api-reference
+version: 1.4.0+
+last_updated: 2026-02-06
+---
+
+[Home](../../index.md) > [API Reference](./index.md) > Event Dispatcher
+
 # Event Dispatcher API
 
 > **Endpoint:** `POST /api/events/process-row` | **Version:** 1.4.0+ | **Last Updated:** 2026-02-06

@@ -1,3 +1,14 @@
+---
+title: Nesting Parser API
+description: Parse nesting files and extract Bill of Materials with material mapping
+keywords: [nesting, parser, bom, material mapping, api]
+category: api-reference
+version: 2.0.0+
+last_updated: 2026-02-06
+---
+
+[Home](../../index.md) > [API Reference](./index.md) > Nesting Parser
+
 # Nesting Parser API
 
 > **Endpoint:** `POST /api/nesting/parse` | **Version:** 2.0.0+ | **Last Updated:** 2026-02-06

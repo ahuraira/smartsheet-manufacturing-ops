@@ -1,3 +1,14 @@
+---
+title: API Reference
+description: Complete API documentation for all Azure Functions endpoints
+keywords: [api, rest, azure functions, endpoints, reference]
+category: api-reference
+version: 1.6.9
+last_updated: 2026-02-06
+---
+
+[Home](../../index.md) > API Reference
+
 # 📘 API Reference
 
 > **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06

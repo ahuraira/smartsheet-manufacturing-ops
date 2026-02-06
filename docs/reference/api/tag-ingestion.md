@@ -1,3 +1,14 @@
+---
+title: Tag Ingestion API
+description: Upload tag sheets with automatic validation, deduplication, and LPO linkage
+keywords: [tag, ingestion, upload, api, validation, smartsheet]
+category: api-reference
+version: 1.0.0+
+last_updated: 2026-02-06
+---
+
+[Home](../../index.md) > [API Reference](./index.md) > Tag Ingestion
+
 # Tag Ingestion API
 
 > **Endpoint:** `POST /api/tags/ingest` | **Version:** 1.0.0+ | **Last Updated:** 2026-02-06
