@@ -1,3 +1,13 @@
+---
+title: Python Data Models
+description: Pydantic request/response models for API endpoints
+keywords: [models, pydantic, schemas, api, requests]
+category: data-reference
+version: 1.6.9
+---
+
+[Home](../../index.md) > [Data Dictionary](./index.md) > Data Models
+
 # Python Data Models
 
 > **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06

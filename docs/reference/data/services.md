@@ -1,3 +1,13 @@
+---
+title: Shared Services
+description: Centralized business logic modules and helper functions
+keywords: [services, lpo service, unit service, helpers]
+category: data-reference
+version: 1.6.9
+---
+
+[Home](../../index.md) > [Data Dictionary](./index.md) > Shared Services
+
 # Shared Services
 
 > **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06

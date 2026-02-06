@@ -1,3 +1,13 @@
+---
+title: Production Sheets
+description: Tag registry, production planning, and nesting log schemas
+keywords: [sheets, tags, planning, nesting, production]
+category: data-reference
+version: 1.6.9
+---
+
+[Home](../../index.md) > [Data Dictionary](./index.md) > Production Sheets
+
 # Production Sheets
 
 > **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06

@@ -1,3 +1,13 @@
+---
+title: Material Mapping Sheets
+description: Material master, overrides, and BOM sheet schemas
+keywords: [sheets, material, mapping, bom, sap codes]
+category: data-reference
+version: 1.6.9
+---
+
+[Home](../../index.md) > [Data Dictionary](./index.md) > Material Mapping
+
 # Material Mapping Sheets
 
 > **Document Type:** Reference | **Version:** 1.6.0+ | **Last Updated:** 2026-02-06

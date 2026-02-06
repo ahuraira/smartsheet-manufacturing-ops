@@ -1,3 +1,13 @@
+---
+title: Governance Sheets
+description: Audit log and exception tracking sheet schemas
+keywords: [sheets, audit, exceptions, governance, logs]
+category: data-reference
+version: 1.6.9
+---
+
+[Home](../../index.md) > [Data Dictionary](./index.md) > Governance Sheets
+
 # Governance Sheets
 
 > **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06

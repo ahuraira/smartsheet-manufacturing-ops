@@ -1,3 +1,13 @@
+---
+title: Core & Master Sheets
+description: System configuration and master data sheet schemas
+keywords: [sheets, config, lpo master, smartsheet]
+category: data-reference
+version: 1.6.9
+---
+
+[Home](../../index.md) > [Data Dictionary](./index.md) > Core Sheets
+
 # Core & Master Sheets
 
 > **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06
