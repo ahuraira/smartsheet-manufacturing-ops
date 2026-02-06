@@ -160,6 +160,7 @@ COLUMN_NAME_MAP = {
     },
     "EXCEPTION_LOG": {
         "Exception ID": "EXCEPTION_ID",
+        "Client Request ID": "CLIENT_REQUEST_ID",  # For deduplication (v1.6.5)
         "Created At": "CREATED_AT",
         "Source": "SOURCE",
         "Related Tag ID": "RELATED_TAG_ID",

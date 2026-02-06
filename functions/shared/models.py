@@ -51,7 +51,7 @@ See Also
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from enum import Enum
 import uuid
 
@@ -99,6 +99,7 @@ class ExceptionSource(str, Enum):
     MANUAL = "Manual"
     SAP_SYNC = "SAP Sync"
     INGEST = "Ingest"
+    SCHEDULE = "Schedule"  # Production planning/scheduling
 
 
 class ReasonCode(str, Enum):
@@ -130,6 +131,9 @@ class ReasonCode(str, Enum):
     PLANNED_MISMATCH = "PLANNED_MISMATCH"
     TAG_NOT_FOUND = "TAG_NOT_FOUND"
     TAG_INVALID_STATUS = "TAG_INVALID_STATUS"
+    # General reason codes
+    SCHEDULE_INVALID_DATA = "SCHEDULE_INVALID_DATA"
+    SYSTEM_ERROR = "SYSTEM_ERROR"
 
 
 class ActionType(str, Enum):
@@ -203,6 +207,8 @@ class TagIngestRequest(BaseModel):
     # Reception info
     received_through: str = "API"  # Email, Whatsapp, API
     user_remarks: Optional[str] = None  # User-entered remarks
+    remarks: Optional[str] = None  # v1.6.8: Remarks from staging sheet
+    location: Optional[str] = None  # v1.6.8: Location from staging sheet
     
     metadata: Optional[Dict[str, Any]] = None
     
@@ -359,6 +365,16 @@ class FileAttachment(BaseModel):
         return self
 
 
+class FileUploadItem(BaseModel):
+    """
+    File item for generic directory upload.
+    v1.6.9: Created to support generic Power Automate file upload flow.
+    """
+    file_name: str
+    file_content: str  # Base64 encoded content
+    subfolder: Optional[str] = None  # Destination subfolder (relative to LPO root)
+
+
 class LPOIngestRequest(BaseModel):
     """Request payload for LPO ingestion API (create)."""
     client_request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -377,6 +393,7 @@ class LPOIngestRequest(BaseModel):
     wastage_pct: float = Field(default=0.0, ge=0, le=20)  # 0-20%
     hold_reason: Optional[str] = None
     remarks: Optional[str] = None
+    area_type: str = "External"  # Internal or External (for billing calculations, v1.6.6)
     
     # File attachments (multi-file support)
     files: List[FileAttachment] = Field(default_factory=list)
@@ -391,6 +408,14 @@ class LPOIngestRequest(BaseModel):
     
     # SharePoint config (optional, can use env vars)
     sharepoint_base_url: Optional[str] = None
+    
+    # v1.6.8: Coerce SAP reference to string (handles numeric inputs from PA)
+    @field_validator('sap_reference', mode='before')
+    @classmethod
+    def coerce_sap_reference(cls, v):
+        if v is None:
+            return v
+        return str(v).strip()
     
     def get_all_files(self) -> List[FileAttachment]:
         """Get all files including legacy single-file fields."""

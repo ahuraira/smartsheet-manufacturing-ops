@@ -1,6 +1,6 @@
 # 📚 Ducts Manufacturing Inventory Management - Documentation Hub
 
-> **Version:** 1.6.3 | **Last Updated:** 2026-01-29 | **Status:** Active Development
+> **Version:** 1.6.9 | **Last Updated:** 2026-02-06 | **Status:** Active Development
 
 Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory Management System. This documentation follows the [Diátaxis framework](https://diataxis.fr/) to organize content by user needs: **Tutorials**, **How-to Guides**, **Reference**, and **Explanation**.
 
@@ -45,6 +45,13 @@ Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory
 | [LPO Ingestion Architecture](../Specifications/lpo_ingestion_architecture.md) | LPO ingestion flow details | Developers |
 | [Nesting Parser Specification](../Specifications/nesting_parser_speccification.md) | Nesting file parsing details | Developers |
 | [Flow Architecture](../Specifications/flow_architecture.md) | Power Automate flow design | Developers, BA |
+
+### 🔄 Power Automate Flows
+
+| Document | Description | Audience |
+|----------|-------------|-------------|
+| [Generic File Upload Flow](./flows/generic_file_upload_flow.md) | Reusable SharePoint file upload (v1.6.9) | Developers |
+| [Nesting Complete Flow](./flows/nesting_complete_flow.md) | Nesting completion notification (v1.6.7) | Developers |
 
 ### 📋 Project Management
 

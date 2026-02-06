@@ -1,6 +1,6 @@
 # 📊 Data Dictionary
 
-> **Document Type:** Reference | **Version:** 1.6.3 | **Last Updated:** 2026-01-29
+> **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06
 
 This document provides a complete reference of all data models, sheets, and column definitions used in the Ducts Manufacturing Inventory Management System.
 
@@ -64,7 +64,9 @@ The system uses an **ID-First Architecture**. While the "Sheet Name" below refer
 | Logical Name | Physical Name | Purpose |
 |--------------|---------------|---------|
 | `TAG_REGISTRY` | `02 Tag Sheet Registry` | Tag records |
+| `TAG_INGESTION_STAGING` | `02h Tag Ingestion Staging` | Tag upload queue |
 | `PRODUCTION_PLANNING` | `03 Production Planning` | Shift-level plans |
+| `PRODUCTION_PLANNING_STAGING` | `03h Production Planning Staging` | Schedule requests (v1.6.6) |
 | `NESTING_LOG` | `04 Nesting Execution Log` | Nesting sessions |
 | `ALLOCATION_LOG` | `05 Allocation Log` | Material reservations |
 | `CONSUMPTION_LOG` | `06 Consumption Log` | Actual usage |
@@ -81,6 +83,17 @@ The system uses an **ID-First Architecture**. While the "Sheet Name" below refer
 | `INVENTORY_SNAPSHOT` | `91 Inventory Snapshot` | Daily system inventory |
 | `SAP_INVENTORY_SNAPSHOT` | `92 SAP Inventory Snapshot` | SAP inventory sync |
 | `PHYSICAL_INVENTORY_SNAPSHOT` | `93 Physical Inventory Snapshot` | Cycle count results |
+
+### Material Mapping Sheets (v1.6.0)
+
+| Logical Name | Physical Name | Purpose |
+|--------------|---------------|---------|
+| `MATERIAL_MASTER` | `05a Material Master` | Canonical material definitions |
+| `MAPPING_OVERRIDE` | `05b Mapping Override` | Customer/LPO-specific overrides |
+| `LPO_MATERIAL_BRAND_MAP` | `05c LPO Material Brand Map` | Brand-to-SAP code mapping per LPO |
+| `MAPPING_HISTORY` | `05d Mapping History` | Audit trail of mapping decisions |
+| `MAPPING_EXCEPTION` | `05e Mapping Exception` | Unresolved material mapping cases |
+| `PARSED_BOM` | `06a Parsed BOM` | Bill of materials extracted from nesting |
 
 ### Governance Sheets
 
@@ -211,6 +224,18 @@ class ExceptionSource(str, Enum):
     MANUAL = "Manual"
     SAP_SYNC = "SAP Sync"
     INGEST = "Ingest"
+    SCHEDULE = "Schedule"  # v1.6.6
+```
+
+### ConfigKey (v1.6.8)
+
+Configuration keys for system settings stored in Config sheet.
+
+```python
+class ConfigKey(str, Enum):
+    SEQ_TAG = "SEQ_TAG"        # Tag ID sequence counter
+    SEQ_LPO = "SEQ_LPO"        # LPO ID sequence counter (v1.6.8)
+    DEFAULT_ADMIN_EMAIL = "DEFAULT_ADMIN_EMAIL"
 ```
 
 ---
@@ -246,6 +271,10 @@ class TagIngestRequest(BaseModel):
     received_through: str = "API"  # Email, Whatsapp, API
     user_remarks: Optional[str] = None  # User-entered remarks
     
+    # v1.6.8: Additional staging fields
+    location: Optional[str] = None  # Location from staging sheet
+    remarks: Optional[str] = None  # Remarks from staging sheet
+    
     metadata: Optional[Dict[str, Any]] = None
 ```
 
@@ -263,6 +292,8 @@ class TagIngestRequest(BaseModel):
 | `tag_name` | string | No | Display name |
 | `received_through` | string | No | Reception channel (Email/Whatsapp/API) |
 | `user_remarks` | string | No | User-entered remarks |
+| `location` | string | No | Location from staging (v1.6.8) |
+| `remarks` | string | No | Remarks from staging (v1.6.8) |
 | `metadata` | object | No | Additional data |
 
 ### TagIngestResponse
@@ -652,6 +683,71 @@ class TagRecord(BaseModel):
 
 ---
 
+## Shared Services (v1.6.x)
+
+### LPO Service (`shared/lpo_service.py`)
+
+Centralized LPO operations for DRY compliance (v1.6.6).
+
+**Key Functions:**
+- `find_lpo_flexible(client, sap_ref, customer_ref)` - Multi-field LPO lookup
+- `get_lpo_quantities(lpo_row)` - Extract quantity data as `LPOQuantities`
+- `get_lpo_status(lpo_row)` - Extract normalized status
+- `validate_lpo_status(lpo_row)` - Check if LPO is on hold
+- `validate_po_balance(lpo_quantities, requested_area)` - Balance check with 5% tolerance
+
+**LPOQuantities Model (v1.6.6):**
+```python
+@dataclass
+class LPOQuantities:
+    po_qty: float
+    delivered: float
+    allocated: float = 0.0
+    planned: float = 0.0
+```
+
+### Unit Service (`shared/unit_service.py`)
+
+Centralized unit conversion with Material Master integration (v1.6.1).
+
+**Key Functions:**
+- `convert_units(quantity, from_uom, to_uom, conversion_factor=None)` - Convert quantities
+- Supports explicit conversion factors from Material Master
+- Fallback to standard conversions (mm ↔ m, cm ↔ m)
+
+### Atomic Update (`shared/atomic_update.py`)
+
+Safe read-modify-write operations with collision handling (v1.6.9).
+
+**Key Functions:**
+- `atomic_increment(client, sheet, row_id, column, amount)` - Safe increment with retry
+- `atomic_set_if_equals(client, sheet, row_id, column, expected, new_value)` - Compare-and-swap
+- Exponential backoff with jitter (100ms-3s, max 5 retries)
+- Detects Smartsheet 4004 collision errors
+
+### Power Automate Models (v1.6.9)
+
+**FileUploadItem:**
+```python
+class FileUploadItem(BaseModel):
+    file_name: str
+    file_content: str  # Base64 encoded
+    subfolder: str  # e.g., "LPO Documents", "Tag Sheets"
+```
+
+**Helper Functions:**
+- `trigger_upload_files_flow(client, lpo_folder_url, files)` - Generic file upload
+- `trigger_nesting_complete_flow(client, data)` - Nesting completion notification (v1.6.7)
+
+### Helper Functions
+
+- `resolve_user_email(client, user_id)` - Convert Smartsheet user ID to email (v1.6.8)
+- `generate_next_lpo_id(client)` - Auto-generate LPO IDs (v1.6.8)
+- `get_physical_column_name(logical_name, sheet_id)` - Manifest-based column resolution
+- `compute_combined_file_hash(files)` - Multi-file hash for deduplication (v1.6.3)
+
+---
+
 ## Sheet Schemas
 
 ### Tag Sheet Registry
@@ -675,14 +771,18 @@ class TagRecord(BaseModel):
 
 | Column | Type | Required | Description |
 |--------|------|----------|-------------|
-| `LPO ID` | Text | Yes | Unique identifier |
+| `LPO ID` | Text | Yes | Unique identifier (LPO-NNNN) |
 | `Customer LPO Ref` | Text | Yes | Customer reference |
 | `SAP Reference` | Text | No | SAP SO/Project |
 | `Customer Name` | Text | Yes | Customer name |
-| `Brand` | Picklist | No | Brand |
+| `Brand` | Picklist | No | Brand (KIMMCO/WTI) |
 | `LPO Status` | Picklist | Yes | Current status |
+| `Area Type` | Picklist | No | Internal/External (v1.6.7) |
 | `PO Quantity (Sqm)` | Number | Yes | Order quantity |
+| `Allocated Quantity` | Number | No | Reserved for production (v1.4.0) |
+| `Planned Quantity` | Number | No | Scheduled for production (v1.4.0) |
 | `Delivered Quantity (Sqm)` | Number | No | Shipped quantity |
+| `Folder URL` | Text | No | SharePoint folder path (v1.6.7) |
 
 ### Config Sheet (00a Config)
 

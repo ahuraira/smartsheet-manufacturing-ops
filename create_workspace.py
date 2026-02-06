@@ -151,6 +151,20 @@ SHEET_DEFINITIONS = {
             {"title": "Allocation Status", "type": "PICKLIST", "options": ["Draft", "Approved", "Issued", "Complete"]}
         ]
     },
+    "03h Production Planning Staging": {
+        "folder": "03. Production Planning",
+        "columns": [
+            {"title": "Tag Sheet ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Planned Date", "type": "DATE"},
+            {"title": "Shift", "type": "PICKLIST", "options": ["Morning", "Evening", "Night"]},
+            {"title": "Machine Assigned", "type": "TEXT_NUMBER"},
+            {"title": "Planned Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Status", "type": "PICKLIST", "options": ["Pending", "Scheduled", "Failed"]},
+            {"title": "Requested By", "type": "CONTACT_LIST"},
+            {"title": "API Status", "type": "TEXT_NUMBER"},
+            {"title": "API Message", "type": "TEXT_NUMBER"}
+        ]
+    },
     "04 Nesting Execution Log": {
         "folder": "03. Production Planning",
         "columns": [
@@ -352,13 +366,14 @@ SHEET_DEFINITIONS = {
         "folder": "04. Production and Delivery",
         "columns": [
             {"title": "Exception ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Client Request ID", "type": "TEXT_NUMBER"},  # For deduplication (v1.6.5)
             {"title": "Created At", "type": "DATETIME", "systemColumnType": "CREATED_DATE"},
             {"title": "Source", "type": "PICKLIST", "options": ["Parser", "Allocation", "Reconcile", "Manual", "SAP Sync", "Ingest"]},
             {"title": "Related Tag ID", "type": "TEXT_NUMBER"},
             {"title": "Related Txn ID", "type": "TEXT_NUMBER"},
             {"title": "Material Code", "type": "TEXT_NUMBER"},
             {"title": "Quantity", "type": "TEXT_NUMBER"},
-            {"title": "Reason Code", "type": "PICKLIST", "options": ["DUPLICATE_UPLOAD", "MULTI_TAG_NEST", "SHORTAGE", "OVERCONSUMPTION", "PHYSICAL_VARIANCE", "SAP_CREATE_FAILED", "PICK_NEGATIVE", "LPO_NOT_FOUND", "LPO_ON_HOLD", "INSUFFICIENT_PO_BALANCE", "PARSE_FAILED"]},
+            {"title": "Reason Code", "type": "PICKLIST", "options": ["DUPLICATE_UPLOAD", "MULTI_TAG_NEST", "SHORTAGE", "OVERCONSUMPTION", "PHYSICAL_VARIANCE", "SAP_CREATE_FAILED", "PICK_NEGATIVE", "LPO_NOT_FOUND", "LPO_ON_HOLD", "INSUFFICIENT_PO_BALANCE", "PARSE_FAILED", "LPO_INVALID_DATA"]},
             {"title": "Severity", "type": "PICKLIST", "options": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
             {"title": "Assigned To", "type": "TEXT_NUMBER"},
             {"title": "Status", "type": "PICKLIST", "options": ["Open", "Acknowledged", "In Progress", "Resolved", "Rejected"]},

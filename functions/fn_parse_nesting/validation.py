@@ -167,3 +167,170 @@ def check_duplicate_request_id(
     except Exception as e:
         logger.warning(f"Error checking duplicate request ID: {e}")
         return None
+
+
+def validate_tag_is_planned(
+    client: SmartsheetClient,
+    tag_id: str
+) -> ValidationResult:
+    """
+    Validate that the Tag has been scheduled in Production Planning.
+    
+    PREREQUISITE: Tag must be planned before nesting file can be processed.
+    
+    SOTA v1.6.9: Robust row selection:
+    - Filters to active statuses (not Cancelled/Completed)
+    - Sorts by planned_date descending (most recent first)
+    - Falls back to modifiedAt if planned_date is not set
+    
+    Args:
+        client: SmartsheetClient instance
+        tag_id: Tag ID to validate
+        
+    Returns:
+        ValidationResult with planning_row_id and planned_date if valid
+    """
+    # Active statuses that allow nesting (exclude terminal states)
+    INACTIVE_STATUSES = {"Cancelled", "Completed", "Closed", "Archived"}
+    
+    try:
+        rows = client.find_rows(
+            sheet_ref=Sheet.PRODUCTION_PLANNING,
+            column_ref=Column.PRODUCTION_PLANNING.TAG_SHEET_ID,
+            value=tag_id
+        )
+        
+        if not rows:
+            logger.warning(f"Tag {tag_id} has not been scheduled in Production Planning")
+            return ValidationResult(
+                is_valid=False,
+                error_code="TAG_NOT_PLANNED",
+                error_message=f"Tag '{tag_id}' must be scheduled before nesting file can be processed"
+            )
+        
+        # v1.6.9 SOTA: Filter to active rows only
+        active_rows = []
+        for row in rows:
+            status = get_row_value(row, Sheet.PRODUCTION_PLANNING, Column.PRODUCTION_PLANNING.STATUS)
+            if status and str(status).strip() in INACTIVE_STATUSES:
+                logger.debug(f"Skipping planning row with status '{status}'")
+                continue
+            active_rows.append(row)
+        
+        if not active_rows:
+            logger.warning(f"Tag {tag_id} has planning entries but all are inactive")
+            return ValidationResult(
+                is_valid=False,
+                error_code="TAG_NOT_PLANNED",
+                error_message=f"Tag '{tag_id}' has no active planning entries (all are Cancelled/Completed)"
+            )
+        
+        # v1.6.9 SOTA: Sort by createdAt descending (most recent first)
+        # User Change: Prefer system creation date over planned_date
+        def get_sort_key(row):
+            created_at = row.get("createdAt") or ""
+            modified_at = row.get("modifiedAt") or ""
+            planned_date = get_row_value(row, Sheet.PRODUCTION_PLANNING, Column.PRODUCTION_PLANNING.PLANNED_DATE) or ""
+            # Priority: CreatedAt -> ModifiedAt -> PlannedDate
+            return created_at or modified_at or planned_date
+        
+        # Sort descending (most recent first)
+        active_rows.sort(key=get_sort_key, reverse=True)
+        
+        # Take the most recent active planning entry
+        planning_row = active_rows[0]
+        row_id = planning_row.get("id") or planning_row.get("row_id")
+        planned_date = get_row_value(planning_row, Sheet.PRODUCTION_PLANNING, Column.PRODUCTION_PLANNING.PLANNED_DATE)
+        status = get_row_value(planning_row, Sheet.PRODUCTION_PLANNING, Column.PRODUCTION_PLANNING.STATUS)
+        
+        logger.info(
+            f"Tag {tag_id} is planned for {planned_date} (status: {status}). "
+            f"Selected from {len(active_rows)} active row(s)."
+        )
+        
+        return ValidationResult(
+            is_valid=True,
+            planning_row_id=row_id,
+            planned_date=str(planned_date) if planned_date else None
+        )
+        
+    except Exception as e:
+        logger.error(f"Error validating tag is planned: {e}")
+        return ValidationResult(
+            is_valid=False,
+            error_code="VALIDATION_SYSTEM_ERROR",
+            error_message=f"System error checking production planning: {str(e)}"
+        )
+
+
+def get_lpo_details(
+    client: SmartsheetClient,
+    sap_lpo_reference: str
+) -> ValidationResult:
+    """
+    Fetch LPO details including Brand and Area Type.
+    
+    FAIL-FAST: If LPO not found or Brand is missing, returns invalid result.
+    
+    Args:
+        client: SmartsheetClient instance
+        sap_lpo_reference: SAP Reference to lookup
+        
+    Returns:
+        ValidationResult with brand, lpo_row_id, and area_type if valid
+    """
+    if not sap_lpo_reference:
+        return ValidationResult(
+            is_valid=False,
+            error_code="LPO_NOT_FOUND",
+            error_message="SAP LPO Reference is required but was not provided"
+        )
+    
+    try:
+        rows = client.find_rows(
+            sheet_ref=Sheet.LPO_MASTER,
+            column_ref=Column.LPO_MASTER.SAP_REFERENCE,
+            value=sap_lpo_reference
+        )
+        
+        if not rows:
+            logger.warning(f"LPO with SAP Reference '{sap_lpo_reference}' not found")
+            return ValidationResult(
+                is_valid=False,
+                error_code="LPO_NOT_FOUND",
+                error_message=f"LPO with SAP Reference '{sap_lpo_reference}' not found in LPO Master"
+            )
+        
+        lpo_row = rows[0]
+        row_id = lpo_row.get("id") or lpo_row.get("row_id")
+        brand = get_row_value(lpo_row, Sheet.LPO_MASTER, Column.LPO_MASTER.BRAND)
+        area_type = get_row_value(lpo_row, Sheet.LPO_MASTER, Column.LPO_MASTER.AREA_TYPE)
+        folder_url = get_row_value(lpo_row, Sheet.LPO_MASTER, Column.LPO_MASTER.FOLDER_URL)
+        
+        # FAIL-FAST: Brand is required
+        if not brand:
+            logger.warning(f"LPO {sap_lpo_reference} is missing Brand")
+            return ValidationResult(
+                is_valid=False,
+                error_code="LPO_INVALID_DATA",
+                error_message=f"LPO '{sap_lpo_reference}' is missing required Brand field"
+            )
+        
+        logger.info(f"LPO {sap_lpo_reference}: Brand={brand}, AreaType={area_type}, Folder={folder_url}")
+        
+        return ValidationResult(
+            is_valid=True,
+            lpo_row_id=row_id,
+            brand=brand,
+            area_type=area_type or "External",  # Default to External if not set
+            lpo_folder_url=folder_url
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching LPO details: {e}")
+        return ValidationResult(
+            is_valid=False,
+            error_code="VALIDATION_SYSTEM_ERROR",
+            error_message=f"System error fetching LPO details: {str(e)}"
+        )
+

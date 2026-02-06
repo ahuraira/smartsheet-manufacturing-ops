@@ -19,6 +19,9 @@ def test_handle_tag_ingest_v1_6_3_features(mock_main, mock_extract_files, mock_g
     mock_client = MagicMock()
     mock_get_client.return_value = mock_client
     
+    # DEDUP CHECK (v1.6.5): Early dedup uses find_row - return None (no existing)
+    mock_client.find_row.return_value = None
+    
     # Mock row lookup
     mock_row = {"id": 12345, "cells": []}
     mock_client.get_row.return_value = mock_row

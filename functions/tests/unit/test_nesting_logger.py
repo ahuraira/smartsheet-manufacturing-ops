@@ -60,6 +60,7 @@ class TestNestingLogger:
                 Column.NESTING_LOG.SHEETS_CONSUMED_VIRTUAL: 5,
                 Column.NESTING_LOG.EXPECTED_CONSUMPTION_M2: 15.0,
                 Column.NESTING_LOG.WASTAGE_PERCENTAGE: 10.0,
+                Column.NESTING_LOG.PLANNED_DATE: "",  # v1.6.7: Added planned_date
                 Column.NESTING_LOG.FILE_HASH: "hash123",
                 Column.NESTING_LOG.CLIENT_REQUEST_ID: "req-001",
             }
@@ -136,7 +137,7 @@ class TestNestingLogger:
         assert args[1] == 200
         # args[2] is update dict
         updates = args[2]
-        assert updates[Column.TAG_REGISTRY.STATUS] == "Nesting Complete"
+        assert updates[Column.TAG_REGISTRY.STATUS] == "Nested"  # Fixed from "Nesting Complete"
         assert updates[Column.TAG_REGISTRY.SHEETS_USED] == 5
         assert updates[Column.TAG_REGISTRY.WASTAGE_NESTED] == 12.5
 

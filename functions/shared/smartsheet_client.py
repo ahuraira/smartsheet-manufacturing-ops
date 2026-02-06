@@ -749,6 +749,11 @@ class SmartsheetClient:
         """Convert a Smartsheet row to a dictionary."""
         result = {"row_id": row["id"]}
         
+        # Include system columns/metadata
+        for key in ["createdAt", "modifiedAt", "rowNumber", "version", "accessLevel"]:
+            if key in row:
+                result[key] = row[key]
+        
         for cell in row.get("cells", []):
             col_name = col_id_to_name.get(cell.get("columnId"))
             if col_name:

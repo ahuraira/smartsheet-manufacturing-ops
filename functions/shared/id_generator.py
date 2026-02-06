@@ -238,6 +238,11 @@ def generate_next_tag_id(client) -> str:
     return SequenceGenerator(client).next_id(ConfigKey.SEQ_TAG)
 
 
+def generate_next_lpo_id(client) -> str:
+    """Generate next LPO ID (e.g., LPO-0001). v1.6.8"""
+    return SequenceGenerator(client).next_id(ConfigKey.SEQ_LPO)
+
+
 def generate_next_exception_id(client) -> str:
     """Generate next Exception ID (e.g., EX-0001)."""
     return SequenceGenerator(client).next_id(ConfigKey.SEQ_EXCEPTION)

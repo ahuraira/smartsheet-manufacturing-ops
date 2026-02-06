@@ -38,7 +38,7 @@ class Sheet:
     # Root level
     REFERENCE_DATA = "REFERENCE_DATA"
     CONFIG = "CONFIG"
-    MACHINE_MASTER = "00B_MACHINE_MASTER"
+    MACHINE_MASTER = "MACHINE_MASTER"  # Per manifest (not 00B_MACHINE_MASTER)
     
     # 01. Commercial and Demand
     LPO_MASTER = "LPO_MASTER"
@@ -154,6 +154,8 @@ class Column:
         CREATED_BY = "CREATED_BY"
         UPDATED_AT = "UPDATED_AT"
         UPDATED_BY = "UPDATED_BY"
+        # Area type for billing calculations (v1.6.6)
+        AREA_TYPE = "AREA_TYPE"
     
     class LPO_INGESTION_STAGING:
         """01h LPO Ingestion staging sheet columns."""
@@ -174,6 +176,8 @@ class Column:
         API_STATUS = "API_STATUS"
         API_MESSAGE = "API_MESSAGE"
         PROCESSED_AT = "PROCESSED_AT"
+        # Area type for billing calculations (v1.6.6)
+        AREA_TYPE = "AREA_TYPE"
 
     class TAG_REGISTRY:
         """02 Tag Sheet Registry columns."""
@@ -239,7 +243,7 @@ class Column:
         REMARKS = "REMARKS"
     
     class PRODUCTION_PLANNING_STAGING:
-        """03h Production Planning Staging columns."""
+        """03h Production Planning Staging columns (per manifest)."""
         SCHEDULE_ID = "SCHEDULE_ID"
         TAG_SHEET_ID = "TAG_SHEET_ID"
         PLANNED_DATE = "PLANNED_DATE"
@@ -247,9 +251,10 @@ class Column:
         MACHINE_ASSIGNED = "MACHINE_ASSIGNED"
         PLANNED_QUANTITY = "PLANNED_QUANTITY"
         STATUS = "STATUS"
-        REQUESTED_BY = "REQUESTED_BY"
-        API_STATUS = "API_STATUS"
-        API_MESSAGE = "API_MESSAGE"
+        RESPONSE = "RESPONSE"
+        EXCEPTION_ID = "EXCEPTION_ID"
+        REMARKS = "REMARKS"
+
 
     class NESTING_LOG:
         """04 Nesting Execution Log columns."""
@@ -270,6 +275,7 @@ class Column:
     class EXCEPTION_LOG:
         """99 Exception Log columns."""
         EXCEPTION_ID = "EXCEPTION_ID"
+        CLIENT_REQUEST_ID = "CLIENT_REQUEST_ID"  # For deduplication (v1.6.5)
         CREATED_AT = "CREATED_AT"
         SOURCE = "SOURCE"
         RELATED_TAG_ID = "RELATED_TAG_ID"

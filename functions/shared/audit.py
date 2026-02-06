@@ -32,12 +32,19 @@ def create_exception(
     material_code: Optional[str] = None,
     quantity: Optional[float] = None,
     message: Optional[str] = None,
+    client_request_id: Optional[str] = None,  # For deduplication (v1.6.5)
 ) -> str:
     """
     Create an exception record and return the exception_id.
     
     This is the authoritative function for exception creation.
     All functions should use this instead of duplicating the logic.
+    
+    IDEMPOTENCY (v1.6.5):
+    If client_request_id is provided, the function will first check if an
+    exception with this ID already exists. If so, it returns the existing
+    exception_id without creating a duplicate. This prevents multiple exceptions
+    from webhook retries processing the same event.
     
     Args:
         client: SmartsheetClient instance
@@ -50,10 +57,26 @@ def create_exception(
         material_code: Material code if applicable
         quantity: Quantity involved if applicable
         message: Human-readable message for resolution action
+        client_request_id: Idempotency key - if provided, dedup check is performed
         
     Returns:
         The generated exception_id (e.g., "EX-0001")
     """
+    # DEDUP CHECK (v1.6.5): If client_request_id provided, check for existing exception
+    if client_request_id:
+        try:
+            existing = client.find_row(
+                Sheet.EXCEPTION_LOG,
+                Column.EXCEPTION_LOG.CLIENT_REQUEST_ID,
+                client_request_id
+            )
+            if existing:
+                existing_id = existing.get(Column.EXCEPTION_LOG.EXCEPTION_ID) or existing.get("Exception ID")
+                logger.info(f"[{trace_id}] Exception already exists for {client_request_id}: {existing_id}")
+                return existing_id
+        except Exception as e:
+            logger.warning(f"[{trace_id}] Exception dedup check failed: {e} - proceeding with creation")
+    
     exception_id = generate_next_exception_id(client)
     now = datetime.now()
     
@@ -68,6 +91,8 @@ def create_exception(
     }
     
     # Optional fields
+    if client_request_id:
+        exception_data[Column.EXCEPTION_LOG.CLIENT_REQUEST_ID] = client_request_id
     if related_tag_id:
         exception_data[Column.EXCEPTION_LOG.RELATED_TAG_ID] = related_tag_id
     if related_txn_id:
@@ -105,6 +130,10 @@ def log_user_action(
     This is the authoritative function for audit logging.
     All functions should use this instead of duplicating the logic.
     
+    EMAIL RESOLUTION (v1.6.7):
+    If user_id is a numeric Smartsheet user ID, it is automatically
+    resolved to an email address for business-friendly logs.
+    
     Args:
         client: SmartsheetClient instance
         user_id: User email/identifier who performed the action
@@ -119,10 +148,18 @@ def log_user_action(
     Returns:
         The generated action_id (e.g., "ACT-0001") or None if failed
     """
+    # Email resolution (v1.6.7): Convert numeric user IDs to email
+    if user_id and str(user_id).isdigit():
+        try:
+            email = client.get_user_email(int(user_id))
+            if email:
+                user_id = email
+        except Exception as e:
+            logger.debug(f"Failed to resolve user_id {user_id} to email: {e}")
+    
     # Generate action ID
     action_id = generate_next_action_id(client)
     
-    # Handle Sheet enum values
     target_table_str = target_table
     if hasattr(target_table, 'value'):
         target_table_str = target_table.value

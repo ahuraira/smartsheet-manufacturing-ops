@@ -92,7 +92,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared import (
     # Config
     # SheetName, ColumnName (legacy) - removed
-    
     # Logical Names (SOTA)
     Sheet,
     Column,
@@ -118,21 +117,26 @@ from shared import (
     compute_combined_file_hash,  # Multi-file support (DRY with fn_lpo_ingest)
     format_datetime_for_smartsheet,
     parse_float_safe,
+    # Column name resolution (v1.6.5 DRY)
+    get_physical_column_name,
+    # User resolution (v1.6.8)
+    resolve_user_email,
     # Audit (shared - DRY principle)
     create_exception,
     log_user_action,
+    # LPO Service (v1.6.6 DRY)
+    find_lpo_flexible,
+    # v1.6.9: Generic file upload to SharePoint
+    trigger_upload_files_flow,
+    FileUploadItem,
 )
 
-# Get manifest for column name resolution
-_manifest = None
+# Alias for backward compatibility with existing code (uses underscore prefix)
+_get_physical_column_name = get_physical_column_name
 
-def _get_physical_column_name(sheet_logical: str, column_logical: str) -> str:
-    """Get physical column name from manifest."""
-    global _manifest
-    if _manifest is None:
-        _manifest = get_manifest()
-    physical_name = _manifest.get_column_name(sheet_logical, column_logical)
-    return physical_name or column_logical  # Fallback to logical if not found
+# DEPRECATED: _manifest is no longer used (we use get_physical_column_name from shared)
+# Kept for backward compatibility with tests that patch fn_ingest_tag._manifest
+_manifest = None
 
 logger = logging.getLogger(__name__)
 
@@ -199,14 +203,43 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 file_hash
             )
             if existing_by_hash:
-                logger.warning(f"[{trace_id}] Duplicate file hash detected")
+                # FIX (v1.6.5): Use physical column names to get tag ID
+                existing_tag_id = (
+                    existing_by_hash.get(_get_physical_column_name("TAG_REGISTRY", "TAG_NAME")) or
+                    existing_by_hash.get(_get_physical_column_name("TAG_REGISTRY", "TAG_ID")) or
+                    existing_by_hash.get("Tag Sheet Name / Rev") or  # Fallback to common name
+                    existing_by_hash.get("id")  # Row ID as last resort
+                )
+                
+                # Race condition check (v1.6.7) - Check if same request
+                existing_client_request_id = (
+                    existing_by_hash.get(_get_physical_column_name("TAG_REGISTRY", "CLIENT_REQUEST_ID")) or
+                    existing_by_hash.get("Client Request ID")
+                )
+                
+                if existing_client_request_id == request.client_request_id:
+                    logger.info(f"[{trace_id}] Race condition detected: File hash {file_hash} already processed by same request")
+                    return func.HttpResponse(
+                        json.dumps({
+                            "status": "ALREADY_PROCESSED",
+                            "tag_id": existing_tag_id,
+                            "trace_id": trace_id,
+                            "message": "File already processed (race condition handled)"
+                        }),
+                        status_code=200,
+                        mimetype="application/json"
+                    )
+                
+                # Genuine duplicate
+                logger.warning(f"[{trace_id}] Duplicate file hash detected from different source: existing tag={existing_tag_id}")
                 exception_id = create_exception(
                     client=client,
                     trace_id=trace_id,
                     reason_code=ReasonCode.DUPLICATE_UPLOAD,
                     severity=ExceptionSeverity.MEDIUM,
-                    related_tag_id=existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME),
-                    message=f"Duplicate file upload. Existing tag: {existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME)}"
+                    related_tag_id=str(existing_tag_id) if existing_tag_id else None,
+                    message=f"Duplicate file upload. Existing tag: {existing_tag_id}",
+                    client_request_id=request.client_request_id  # DEDUP (v1.6.5)
                 )
                 log_user_action(
                     client=client,
@@ -220,7 +253,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 return func.HttpResponse(
                     json.dumps({
                         "status": "DUPLICATE",
-                        "existing_tag_id": existing_by_hash.get(Column.TAG_REGISTRY.TAG_NAME) or existing_by_hash.get(Column.TAG_REGISTRY.TAG_ID),
+                        "existing_tag_id": existing_tag_id,
                         "exception_id": exception_id,
                         "trace_id": trace_id,
                         "message": "This file has already been uploaded"
@@ -238,7 +271,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 trace_id=trace_id,
                 reason_code=ReasonCode.LPO_NOT_FOUND,
                 severity=ExceptionSeverity.HIGH,
-                message=f"LPO not found: {request.lpo_sap_reference or request.customer_lpo_ref or request.lpo_id}"
+                message=f"LPO not found: {request.lpo_sap_reference or request.customer_lpo_ref or request.lpo_id}",
+                client_request_id=request.client_request_id  # DEDUP (v1.6.5)
             )
             log_user_action(
                 client=client,
@@ -272,7 +306,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 trace_id=trace_id,
                 reason_code=ReasonCode.LPO_ON_HOLD,
                 severity=ExceptionSeverity.HIGH,
-                message=f"LPO {lpo.get(customer_lpo_ref_col)} is currently on hold"
+                message=f"LPO {lpo.get(customer_lpo_ref_col)} is currently on hold",
+                client_request_id=request.client_request_id  # DEDUP (v1.6.5)
             )
             log_user_action(
                 client=client,
@@ -318,7 +353,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 reason_code=ReasonCode.INSUFFICIENT_PO_BALANCE,
                 severity=ExceptionSeverity.HIGH,
                 quantity=request.required_area_m2,
-                message=f"Required: {request.required_area_m2} m², Available: {remaining} m²"
+                message=f"Required: {request.required_area_m2} m², Available: {remaining} m²",
+                client_request_id=request.client_request_id  # DEDUP (v1.6.5)
             )
             log_user_action(
                 client=client,
@@ -354,6 +390,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         tag_name = request.tag_name or request.original_file_name or tag_id
         
+        # v1.6.8: Resolve email and get wastage
+        submitted_by_email = resolve_user_email(client, request.uploaded_by)
+        lpo_wastage = parse_float_safe(lpo.get(wastage_col))
+        
         # Build complete tag data with all required fields
         tag_data = {
             # Core identification
@@ -364,7 +404,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             # Reception info
             Column.TAG_REGISTRY.DATE_TAG_SHEET_RECEIVED: format_datetime_for_smartsheet(datetime.now()),
             Column.TAG_REGISTRY.RECEIVED_THROUGH: request.received_through,
-            Column.TAG_REGISTRY.SUBMITTED_BY: request.uploaded_by,
+            Column.TAG_REGISTRY.SUBMITTED_BY: submitted_by_email,  # v1.6.8: Resolved email
             
             # LPO link and copied data
             Column.TAG_REGISTRY.LPO_SAP_REFERENCE: lpo.get(sap_ref_col) or lpo.get(customer_lpo_ref_col),
@@ -372,7 +412,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             Column.TAG_REGISTRY.CUSTOMER_NAME: lpo.get(customer_name_col),
             Column.TAG_REGISTRY.PROJECT: lpo.get(project_col),
             Column.TAG_REGISTRY.BRAND: lpo.get(brand_col),
-            Column.TAG_REGISTRY.LPO_ALLOWABLE_WASTAGE: lpo.get(wastage_col),
+            Column.TAG_REGISTRY.LPO_ALLOWABLE_WASTAGE: lpo_wastage,  # v1.6.8: Parsed float
             
             # Quantity and dates
             Column.TAG_REGISTRY.REQUIRED_DELIVERY_DATE: request.requested_delivery_date,
@@ -385,8 +425,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             # File tracking
             Column.TAG_REGISTRY.FILE_HASH: file_hash,
             
-            # Remarks - user input separate from system notes
-            Column.TAG_REGISTRY.REMARKS: request.user_remarks or f"Trace: {trace_id}",
+            # v1.6.8: Location and remarks from staging
+            Column.TAG_REGISTRY.LOCATION: request.location,
+            Column.TAG_REGISTRY.REMARKS: request.remarks or request.user_remarks or f"Trace: {trace_id}",
         }
         
         created_row = client.add_row(Sheet.TAG_REGISTRY, tag_data)
@@ -410,6 +451,32 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 except Exception as attach_err:
                     logger.warning(f"[{trace_id}] Failed to attach file {file_name}: {attach_err}")
             logger.info(f"[{trace_id}] Attached {attached_count}/{len(all_files)} files to tag")
+        
+        # 6c. Upload files to SharePoint "Tag Sheets" subfolder (v1.6.9)
+        lpo_folder_url_col = get_physical_column_name("LPO_MASTER", "FOLDER_URL")
+        lpo_folder_url = lpo.get(lpo_folder_url_col) if lpo else None
+        
+        if lpo_folder_url and all_files:
+            upload_items = []
+            for f in all_files:
+                if f.file_content:
+                    file_name = f.file_name or f"tag_{tag_id}_{len(upload_items)}"
+                    upload_items.append(FileUploadItem(
+                        file_name=file_name,
+                        file_content=f.file_content,
+                        subfolder="Tag Sheets"  # All tag files go here
+                    ))
+            
+            if upload_items:
+                upload_result = trigger_upload_files_flow(
+                    lpo_folder_url=lpo_folder_url,
+                    files=upload_items,
+                    correlation_id=trace_id
+                )
+                if upload_result.success:
+                    logger.info(f"[{trace_id}] Tag file upload triggered: {len(upload_items)} files")
+                else:
+                    logger.warning(f"[{trace_id}] Tag file upload failed: {upload_result.error_message}")
         
         # 7. Log user action
         log_user_action(
@@ -464,41 +531,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
 
 def _find_lpo(client, request: TagIngestRequest) -> Optional[dict]:
-    """Find LPO by various reference fields."""
-    if request.lpo_sap_reference:
-        lpo = client.find_row(
-            Sheet.LPO_MASTER,
-            Column.LPO_MASTER.SAP_REFERENCE,
-            request.lpo_sap_reference
-        )
-        if lpo:
-            return lpo
+    """
+    Find LPO by various reference fields.
     
-    if request.customer_lpo_ref:
-        lpo = client.find_row(
-            Sheet.LPO_MASTER,
-            Column.LPO_MASTER.CUSTOMER_LPO_REF,
-            request.customer_lpo_ref
-        )
-        if lpo:
-            return lpo
-    
-    if request.lpo_id:
-        # Try as SAP reference first, then customer ref
-        lpo = client.find_row(
-            Sheet.LPO_MASTER,
-            Column.LPO_MASTER.SAP_REFERENCE,
-            request.lpo_id
-        )
-        if lpo:
-            return lpo
-        lpo = client.find_row(
-            Sheet.LPO_MASTER,
-            Column.LPO_MASTER.CUSTOMER_LPO_REF,
-            request.lpo_id
-        )
-        if lpo:
-            return lpo
-    
-    return None
-
+    DEPRECATED: This is a wrapper for backward compatibility.
+    Use `find_lpo_flexible()` from shared.lpo_service directly.
+    """
+    return find_lpo_flexible(
+        client,
+        sap_ref=request.lpo_sap_reference,
+        customer_ref=request.customer_lpo_ref,
+        lpo_id=request.lpo_id
+    )

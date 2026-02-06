@@ -96,22 +96,29 @@ from shared import (
     generate_lpo_folder_path,
     generate_lpo_folder_url,
     
+    # ID generation (v1.6.8)
+    generate_next_lpo_id,
+    
+    # User resolution (v1.6.8)
+    resolve_user_email,
+    
     # Audit (shared - DRY)
     create_exception,
     log_user_action,
     
     # Power Automate (v1.3.1+)
     trigger_create_lpo_folders,
+    # v1.6.9: Generic file upload to SharePoint
+    trigger_upload_files_flow,
+    FileUploadItem,
 )
 
 
 logger = logging.getLogger(__name__)
 
-
-def _get_physical_column_name(sheet_logical: str, column_logical: str) -> Optional[str]:
-    """Get physical column name from manifest."""
-    manifest = get_manifest()
-    return manifest.get_column_name(sheet_logical, column_logical)
+# DRY (v1.6.5): Use shared helper instead of local duplicate
+from shared import get_physical_column_name
+_get_physical_column_name = get_physical_column_name  # Alias for backward compat
 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -195,13 +202,36 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             request.sap_reference
         )
         if existing_sap:
-            logger.warning(f"[{trace_id}] Duplicate SAP Reference: {request.sap_reference}")
+            # Check if this is the same request (race condition from Service Bus retry)
+            existing_client_request_id = existing_sap.get(
+                _get_physical_column_name("LPO_MASTER", "CLIENT_REQUEST_ID")
+            ) or existing_sap.get("Client Request ID")
+            
+            if existing_client_request_id == request.client_request_id:
+                # Same request - this is a race condition, return gracefully
+                logger.info(f"[{trace_id}] Race condition detected: SAP {request.sap_reference} already created by same request")
+                folder_url = existing_sap.get(_get_physical_column_name("LPO_MASTER", "FOLDER_URL")) or existing_sap.get("Folder URL")
+                return func.HttpResponse(
+                    json.dumps({
+                        "status": "ALREADY_PROCESSED",
+                        "sap_reference": request.sap_reference,
+                        "folder_path": folder_url,
+                        "trace_id": trace_id,
+                        "message": "Request already processed (race condition handled)"
+                    }),
+                    status_code=200,
+                    mimetype="application/json"
+                )
+            
+            # Genuinely different source - create exception
+            logger.warning(f"[{trace_id}] Duplicate SAP Reference from different source: {request.sap_reference}")
             exception_id = create_exception(
                 client=client,
                 trace_id=trace_id,
                 reason_code=ReasonCode.DUPLICATE_SAP_REF,
                 severity=ExceptionSeverity.MEDIUM,
-                message=f"SAP Reference {request.sap_reference} already exists"
+                message=f"SAP Reference {request.sap_reference} already exists",
+                client_request_id=request.client_request_id  # Include for dedup
             )
             log_user_action(
                 client=client,
@@ -218,7 +248,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     "existing_sap_reference": request.sap_reference,
                     "exception_id": exception_id,
                     "trace_id": trace_id,
-                    "message": "SAP Reference already exists. Use update endpoint to modify."
+                    "message": "SAP Reference already exists from a different source. Use update endpoint to modify."
                 }),
                 status_code=409,
                 mimetype="application/json"
@@ -317,7 +347,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         now = format_datetime_for_smartsheet(datetime.now())
         po_value = request.po_quantity_sqm * request.price_per_sqm
         
+        # v1.6.8: Generate LPO ID and resolve email
+        lpo_id = generate_next_lpo_id(client)
+        created_by_email = resolve_user_email(client, request.uploaded_by)
+        
         lpo_data = {
+            Column.LPO_MASTER.LPO_ID: lpo_id,  # v1.6.8: Auto-generated
             Column.LPO_MASTER.SAP_REFERENCE: request.sap_reference,
             Column.LPO_MASTER.CUSTOMER_LPO_REF: request.customer_lpo_ref,
             Column.LPO_MASTER.CUSTOMER_NAME: request.customer_name,
@@ -334,11 +369,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             Column.LPO_MASTER.FOLDER_URL: folder_url,
             Column.LPO_MASTER.SOURCE_FILE_HASH: file_hash,
             Column.LPO_MASTER.CLIENT_REQUEST_ID: request.client_request_id,
-            Column.LPO_MASTER.CREATED_BY: request.uploaded_by,
+            Column.LPO_MASTER.CREATED_BY: created_by_email,  # v1.6.8: Resolved email
             # Initialize tracking fields
             Column.LPO_MASTER.DELIVERED_QUANTITY_SQM: 0,
             Column.LPO_MASTER.DELIVERED_VALUE: 0,
             Column.LPO_MASTER.PO_BALANCE_QUANTITY: request.po_quantity_sqm,
+            Column.LPO_MASTER.AREA_TYPE: request.area_type,  # v1.6.6: Area type for billing
         }
         
         result = client.add_row(Sheet.LPO_MASTER, lpo_data)
@@ -385,6 +421,38 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         )
         
         if flow_result.success:
+            logger.info(f"[{trace_id}] Folder creation flow triggered")
+        else:
+            logger.warning(f"[{trace_id}] Folder creation flow failed: {flow_result.error_message}")
+        
+        # 10. Upload files to SharePoint (v1.6.9)
+        if folder_url and all_files:
+            upload_items = []
+            for f in all_files:
+                if f.file_content:
+                    file_name = f.file_name or f"{f.file_type.value}_file"
+                    ext = file_name.lower().split('.')[-1] if '.' in file_name else ''
+                    # PDF → LPO Documents, Excel → Costing, Others → LPO Documents
+                    if ext in ('xlsx', 'xls', 'csv'):
+                        subfolder = "Costing"
+                    else:
+                        subfolder = "LPO Documents"
+                    upload_items.append(FileUploadItem(
+                        file_name=file_name,
+                        file_content=f.file_content,
+                        subfolder=subfolder
+                    ))
+            
+            if upload_items:
+                upload_result = trigger_upload_files_flow(
+                    lpo_folder_url=folder_url,
+                    files=upload_items,
+                    correlation_id=trace_id
+                )
+                if upload_result.success:
+                    logger.info(f"[{trace_id}] File upload triggered: {len(upload_items)} files")
+                else:
+                    logger.warning(f"[{trace_id}] File upload failed: {upload_result.error_message}")
             logger.info(f"[{trace_id}] Folder creation flow triggered successfully")
         else:
             # Don't fail the LPO creation - folder creation is eventual consistency

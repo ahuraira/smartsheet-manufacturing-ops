@@ -166,6 +166,7 @@ class ConfigKey(str, Enum):
     """
     # Sequence counters for ID generation
     SEQ_TAG = "seq_tag"
+    SEQ_LPO = "seq_lpo"  # v1.6.8: LPO ID sequence
     SEQ_EXCEPTION = "seq_exception"
     SEQ_ALLOCATION = "seq_allocation"
     SEQ_CONSUMPTION = "seq_consumption"
@@ -209,6 +210,7 @@ class ConfigKey(str, Enum):
 # ID Prefixes for each entity type
 ID_PREFIXES = {
     ConfigKey.SEQ_TAG: "TAG",
+    ConfigKey.SEQ_LPO: "LPO",  # v1.6.8
     ConfigKey.SEQ_EXCEPTION: "EX",
     ConfigKey.SEQ_ALLOCATION: "ALLOC",
     ConfigKey.SEQ_CONSUMPTION: "CON",
@@ -226,6 +228,7 @@ ID_PREFIXES = {
 DEFAULT_CONFIG = {
     # Sequence counters (start at 0, first ID will be 1)
     ConfigKey.SEQ_TAG: "0",
+    ConfigKey.SEQ_LPO: "0",  # v1.6.8
     ConfigKey.SEQ_EXCEPTION: "0",
     ConfigKey.SEQ_ALLOCATION: "0",
     ConfigKey.SEQ_CONSUMPTION: "0",

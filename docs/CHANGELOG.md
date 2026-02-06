@@ -17,6 +17,247 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.9] - 2026-02-04
+
+### SOTA Review Fixes
+
+This release addresses critical and major issues identified during ruthless SOTA review.
+
+### Added
+- **Atomic Update Helper** (`shared/atomic_update.py`):
+  - `atomic_increment()` - Safe read-modify-write with retry on collision
+  - `atomic_set_if_equals()` - Compare-and-swap operation
+  - Exponential backoff with jitter (100ms-3s, max 5 retries)
+  - Detects Smartsheet 4004 collision errors
+
+- **Generic File Upload Flow** (Power Automate Abstraction):
+  - `FileUploadItem` model - Standardized file/content/subfolder structure
+  - `trigger_upload_files_flow()` - Generic helper to upload files to any LPO subfolder
+  - `docs/flows/generic_file_upload_flow.md` - New documentation with JSON schema
+
+- **Warnings in Response** - Non-fatal failures now tracked:
+  - Response includes `warnings` array when issues occur
+  - Each warning has `code` and `message` fields
+  - Enables transparency without blocking success
+
+- **fn_lpo_ingest** - SharePoint file upload integration:
+  - Uploads files to SharePoint via Power Automate (single batched call)
+  - PDF/other files → `LPO Documents` subfolder
+  - Excel files (xlsx, xls, csv) → `Costing` subfolder
+
+- **fn_ingest_tag** - SharePoint file upload integration:
+  - Uploads tag files to SharePoint via Power Automate
+  - All files → `Tag Sheets` subfolder
+  - Uses LPO's `FOLDER_URL` to determine destination
+
+### Changed
+- **LPO ALLOCATED_QUANTITY Update** (CRITICAL FIX):
+  - Previously: Unsafe read-modify-write caused race conditions
+  - Now: Uses `atomic_increment()` with retry on collision
+  - Prevents lost updates under concurrent access
+
+- **Exception Creation for Failures** (CRITICAL FIX):
+  - Production Planning update failure → LOW severity exception
+  - LPO allocation update failure → MEDIUM severity exception
+  - Blob storage upload failure → LOW severity exception
+  - Power Automate trigger failure → LOW severity exception
+  - All failures logged and tracked, not silently swallowed
+
+- **Planning Row Selection** (`validate_tag_is_planned`):
+  - Previously: Took first row without ordering (could select wrong row)
+  - Now: Filters inactive statuses (Cancelled, Completed, Closed, Archived)
+  - Now: Sorts by `planned_date` descending (most recent first)
+  - Falls back to `modifiedAt` if planned_date not set
+
+- **Thread-Safe Singleton** (`get_flow_client()`):
+  - Added `threading.Lock()` for double-check locking pattern
+  - Prevents race conditions during FlowClient initialization
+
+- **Module-Level Imports** (`fn_parse_nesting/__init__.py`):
+  - Moved inline imports to module level for performance
+  - Reduces import overhead in hot paths
+
+### Fixed
+- `test_nesting_logger.py` - Updated expectations for `PLANNED_DATE` field
+- `test_nesting_validation.py` - Added mocks for new v1.6.9 functions
+
+---
+
+## [1.6.8] - 2026-02-04
+
+### Added
+- **LPO ID Generation** - Auto-generated sequential IDs for new LPOs:
+  - `ConfigKey.SEQ_LPO` - New sequence counter in Config sheet
+  - `generate_next_lpo_id(client)` - New function in `id_generator.py`
+  - `fn_lpo_ingest` now populates `LPO_ID` column (e.g., "LPO-0001")
+
+- **Email Resolution Helper** - Centralized user ID to email conversion:
+  - `resolve_user_email(client, user_id)` - New helper in `helpers.py`
+  - Converts numeric Smartsheet user IDs to email addresses
+  - Falls back to original value if resolution fails
+
+- **Tag Ingestion Fields** - Additional fields from staging:
+  - `TagIngestRequest.location` - Location from staging sheet
+  - `TagIngestRequest.remarks` - Remarks from staging sheet
+
+### Changed
+- **LPOIngestRequest** - SAP reference coercion:
+  - Numeric SAP references (e.g., `12345`) now coerced to strings
+  - Avoids validation errors when Power Automate passes numbers
+
+- **fn_lpo_ingest** - User field improvements:
+  - `CREATED_BY` now resolved to email (not raw Smartsheet ID)
+
+- **fn_ingest_tag** - Multiple fixes:
+  - `SUBMITTED_BY` now resolved to email
+  - `LPO_ALLOWABLE_WASTAGE` parsed with `parse_float_safe()` (fixes 0 issue)
+  - `LOCATION` field now populated from request
+  - `REMARKS` field now uses request.remarks instead of trace ID
+
+---
+
+## [1.6.7] - 2026-02-03
+
+### Added
+- **AREA_TYPE Column Support** - Internal/External billing area for LPO contracts:
+  - `Column.LPO_MASTER.AREA_TYPE` - Added to `logical_names.py`
+  - `Column.LPO_INGESTION_STAGING.AREA_TYPE` - Added to `logical_names.py`
+  - `LPOIngestRequest.area_type` - New optional field (default: "External")
+  - `fn_lpo_ingest` - Now persists `AREA_TYPE` to LPO record
+
+- **Nesting Backtracking Flow** - Comprehensive data enrichment and backtracking:
+  - `validate_tag_is_planned()` - Prerequisite validation (tag must be scheduled before nesting)
+  - `get_lpo_details()` - Fail-fast LPO fetch with Brand/Area Type enrichment
+  - `ValidationResult` model extended with `brand`, `area_type`, `lpo_row_id`, `planning_row_id`, `planned_date`
+
+### Changed
+- **fn_parse_nesting** - Enhanced with backtracking and enrichment:
+  - Fails fast if tag is not scheduled in Production Planning
+  - Fails fast if LPO is missing or Brand is not set
+  - Logs `brand` and `planned_date` to NESTING_LOG
+  - Updates Production Planning status to "Nesting Uploaded"
+  - Increments LPO `ALLOCATED_QUANTITY` based on area type (Internal/External)
+  - Response JSON now includes `enrichment` block with contextual data
+  - Uploads nesting JSON AND original Excel file to Azure Blob Storage (`nesting-outputs` container)
+  - Triggers Power Automate flow for email notification and file copying
+  - Fetches LPO `FOLDER_URL` and passes it to response/PA (no longer constructed manually)
+  - Updates Tag Registry `ESTIMATED_QUANTITY` with actual consumed area (Internal/External)
+  - **SAP Reference now optional**: If not provided in payload, derived from Tag Registry `LPO_SAP_REFERENCE`
+
+- **nesting_logger.log_execution()** - Now accepts `brand` and `planned_date` parameters
+
+- **shared/power_automate.py** - Added `trigger_nesting_complete_flow()` for nesting completion
+
+- **shared/blob_storage.py** - NEW: Azure Blob Storage helper for JSON uploads
+
+---
+
+## [1.6.6] - 2026-01-30
+
+### Added
+- **LPO Shared Services Module** - Centralized LPO operations for DRY compliance:
+  - `shared/lpo_service.py` - New module with lookup, validation, and data extraction
+  - `find_lpo_by_sap_reference()` - Lookup by SAP Reference
+  - `find_lpo_by_customer_ref()` - Lookup by Customer LPO Reference
+  - `find_lpo_flexible()` - Multi-field lookup (replaces duplicated `_find_lpo`)
+  - `get_lpo_quantities()` - Returns `LPOQuantities` dataclass with po_qty, delivered, planned, allocated
+  - `get_lpo_status()` - Extract normalized status
+  - `validate_lpo_status()` - Check if LPO is on hold
+  - `validate_po_balance()` - PO balance validation with 5% tolerance
+
+- **Production Planning Staging Handler** - Automated scheduling via staging sheet:
+  - `fn_event_dispatcher/handlers/schedule_handler.py` - New handler for staging sheet events
+  - Routes to `fn_schedule_tag` when row created in staging sheet
+  - Added `03h Production Planning Staging` to `create_workspace.py`
+  - Routing already configured in `event_routing.json` as `schedule_tag`
+
+- **Schedule Handler Tests** - Tests that verify actual behavior (not just mocks):
+  - `test_fn_schedule_tag_is_actually_called` - Verifies main() is invoked
+  - `test_dedup_returns_immediately` - Verifies early return on duplicate
+  - `test_dispatch_result_uses_valid_fields_only` - Verifies model compatibility
+  - `test_missing_tag_id_creates_exception` - Verifies exception creation
+
+### Changed
+- **fn_ingest_tag**: Now uses `find_lpo_flexible()` from shared service
+- **fn_schedule_tag**: Now uses `get_lpo_quantities()` for PO balance check
+- **Foundation for Phase 2**: Allocation, consumption, DO generation, invoicing
+
+### Fixed
+- **CRITICAL: schedule_handler.py silent failures** - Complete rewrite to match tag_handler pattern:
+  - Handler was returning `READY` but never invoking fn_schedule_tag → now calls it directly
+  - Handler was passing invalid fields to `DispatchResult` (silently ignored) → fixed to use only valid fields
+  - Early dedup check was not returning → now returns immediately if already processed
+
+- **CRITICAL: Robust Deduplication & Race Condition Handling** (v1.6.7) - Fixed concurrent retry issues:
+  - **fn_lpo_ingest**: Detects race condition locally -> returns `ALREADY_PROCESSED` (200) instead of duplicate SAP exception (409) if client_request_id matches.
+  - **fn_ingest_tag**: Detects race condition locally for file hash -> returns `ALREADY_PROCESSED` (200) instead of duplicate file exception (409).
+  - **schedule_handler**: Implemented timestamp-based dedup for updates (`updated-{timestamp}`) to allow valid reschedules while preventing retry duplicates.
+
+- **Missing Fields & Data Quality**:
+  - **tag_handler**: New `RECEIVED_THROUGH` extraction from staging (defaults to 'API').
+  - **lpo_handler**: Added `normalize_percentage()` for wastage (handles 18, 0.18, 18% -> 18.0).
+  - **audit.py**: Added automatic email resolution for `log_user_action` (converts numeric Smartsheet user IDs to emails).
+
+- **logical_names.py sync** - Updated `PRODUCTION_PLANNING_STAGING` columns to match manifest:
+  - Removed: `REQUESTED_BY`, `API_STATUS`, `API_MESSAGE` (don't exist)
+  - Added: `RESPONSE`, `EXCEPTION_ID`, `REMARKS` (exist in manifest)
+
+- **New enum values added to models.py**:
+  - `ExceptionSource.SCHEDULE` - For scheduling-related exceptions
+  - `ReasonCode.SCHEDULE_INVALID_DATA` - For schedule validation errors
+  - `ReasonCode.SYSTEM_ERROR` - For unexpected system errors
+
+---
+
+## [1.6.5] - 2026-01-30
+
+### Fixed
+- **CRITICAL: Duplicate Exception Creation** - Fixed webhook retries creating multiple exceptions:
+  - Added `CLIENT_REQUEST_ID` column to `99 Exception Log` sheet
+  - `create_exception()` now performs idempotency check before creating
+  - If exception with same `client_request_id` exists, returns existing ID
+  - Prevents duplicate exception rows when Power Automate retries a webhook
+
+- **"Existing Tag: None" Error Message** - Fixed column name resolution in duplicate detection:
+  - `fn_ingest_tag` now uses `_get_physical_column_name()` for tag ID lookup
+  - Fallbacks to common column names (`Tag Sheet Name / Rev`) and row `id`
+  - Exception message now correctly shows existing tag ID
+
+### Added
+- **Handler-Level Early Dedup Check** - Added at earliest point in processing:
+  - `tag_handler.py`: Checks `TAG_REGISTRY.CLIENT_REQUEST_ID` before fetching row
+  - `lpo_handler.py`: Checks `LPO_MASTER.CLIENT_REQUEST_ID` before fetching row
+  - Returns `ALREADY_PROCESSED` immediately if staging row was already ingested
+  - Prevents any duplicate processing on webhook retries
+
+- **Exception Idempotency Parameter** - `create_exception()` accepts `client_request_id`:
+  - Passed through from all exception calls in `fn_ingest_tag` and handlers
+  - Enables exception deduplication without database-level constraints
+
+### Changed
+- **Schema Updates**:
+  - `logical_names.py`: Added `CLIENT_REQUEST_ID` to `EXCEPTION_LOG` class
+  - `create_workspace.py`: Added `Client Request ID` column to Exception Log sheet
+  - `fetch_manifest.py`: Added column mapping for new Exception Log column
+  - Added `LPO_INVALID_DATA` to Reason Code picklist options
+
+### Technical Details
+Root cause analysis identified 3 issues with duplicate processing:
+1. No dedup at exception creation level (now fixed with `client_request_id` check)
+2. Column name mismatch in duplicate detection message (now uses manifest resolution)
+3. Handler dedup check happened after webhook retry entry (now at earliest point)
+
+### DRY Compliance Refactor
+- **Centralized `get_physical_column_name` helper** - Eliminated code duplication:
+  - Moved duplicate function from 4 files to `shared/helpers.py`
+  - Affected files: `fn_ingest_tag`, `fn_lpo_ingest`, `fn_lpo_update`, `fn_schedule_tag`
+  - All modules now use `from shared import get_physical_column_name`
+  - Added `_manifest = None` in function modules for test backward compatibility
+  - Updated test patches to include `shared.manifest.get_manifest`
+  - All 420 tests passing
+
+---
+
 ## [1.6.4] - 2026-01-29
 
 ### Fixed

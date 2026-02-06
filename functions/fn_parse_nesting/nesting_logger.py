@@ -20,7 +20,9 @@ class NestingLogger:
         tag_id: str,
         file_hash: str,
         client_request_id: str,
-        sap_lpo_reference: Optional[str] = None
+        sap_lpo_reference: Optional[str] = None,
+        brand: Optional[str] = None,  # v1.6.7: LPO Brand
+        planned_date: Optional[str] = None  # v1.6.7: From Production Planning
     ) -> int:
         """
         Log the successful nesting execution to the Nesting Execution Log sheet.
@@ -37,10 +39,11 @@ class NestingLogger:
             Column.NESTING_LOG.NEST_SESSION_ID: nest_session_id,
             Column.NESTING_LOG.TAG_SHEET_ID: tag_id,
             Column.NESTING_LOG.TIMESTAMP: datetime.utcnow().isoformat(),
-            Column.NESTING_LOG.BRAND: "",  # Could fetch from LPO or leave empty
+            Column.NESTING_LOG.BRAND: brand or "",  # v1.6.7: Now populated
             Column.NESTING_LOG.SHEETS_CONSUMED_VIRTUAL: inventory_impact.utilized_sheets_count,
             Column.NESTING_LOG.EXPECTED_CONSUMPTION_M2: inventory_impact.gross_area_m2,
             Column.NESTING_LOG.WASTAGE_PERCENTAGE: efficiency.waste_pct,
+            Column.NESTING_LOG.PLANNED_DATE: planned_date or "",  # v1.6.7: From planning
             Column.NESTING_LOG.FILE_HASH: file_hash,
             Column.NESTING_LOG.CLIENT_REQUEST_ID: client_request_id,
         }
@@ -93,22 +96,43 @@ class NestingLogger:
             # But we log it.
             return None
 
-    def update_tag_status(self, tag_row_id: int, sheets_used: int, wastage: float):
+    def update_tag_status(
+        self,
+        tag_row_id: int,
+        sheets_used: float,
+        wastage: float,
+        area_consumed: Optional[float] = None  # v1.6.7: Internal/External area
+    ) -> bool:
         """
-        Update the Tag Registry with completion status and usage metrics.
-        """
-        if not tag_row_id:
-            return
+        Update the Tag Registry row with nesting results.
+        
+        Args:
+            tag_row_id: Row ID in Tag Registry
+            sheets_used: Number of sheets utilized
+            wastage: Wastage percentage
+            area_consumed: Calculated area (Internal/External) to update ESTIMATED_QUANTITY
             
+        Returns:
+            bool: True if successful
+        """
         try:
-            update_data = {
-                Column.TAG_REGISTRY.STATUS: "Nesting Complete",
+            updates = {
                 Column.TAG_REGISTRY.SHEETS_USED: sheets_used,
-                Column.TAG_REGISTRY.WASTAGE_NESTED: wastage
+                Column.TAG_REGISTRY.WASTAGE_NESTED: wastage,
+                Column.TAG_REGISTRY.STATUS: "Nested"
             }
             
+            # v1.6.7: Update Estimated Quantity with actual consumption (Internal/External)
+            if area_consumed is not None:
+                updates[Column.TAG_REGISTRY.ESTIMATED_QUANTITY] = area_consumed
+            
             logger.info(f"Updating Tag row {tag_row_id} with nesting metrics")
-            self.client.update_row(Sheet.TAG_REGISTRY, tag_row_id, update_data)
+            self.client.update_row(
+                Sheet.TAG_REGISTRY,
+                tag_row_id,
+                updates
+            )
+            return True
         except Exception as e:
-            logger.error(f"Failed to update tag status: {e}")
-            # Non-blocking error
+            logger.error(f"Failed to update Tag Registry status: {e}")
+            return False

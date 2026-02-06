@@ -54,6 +54,8 @@ class FlowType(str, Enum):
     CREATE_LPO_FOLDERS = "create_lpo_folders"
     CREATE_TAG_FOLDERS = "create_tag_folders"  # Future use
     SEND_NOTIFICATION = "send_notification"     # Future use
+    NESTING_COMPLETE = "nesting_complete"       # v1.6.7: Nesting completion flow
+    UPLOAD_FILES = "upload_files"               # v1.6.9: Generic directory file upload
 
 
 @dataclass
@@ -87,6 +89,8 @@ class FlowClientConfig:
     
     # Flow URLs (from environment)
     create_folders_url: Optional[str] = None
+    nesting_complete_url: Optional[str] = None  # v1.6.7
+    upload_files_url: Optional[str] = None      # v1.6.9: Generic upload flow URL
     
     # LPO subfolder structure (configurable via LPO_SUBFOLDERS env var)
     lpo_subfolders: list = field(default_factory=lambda: DEFAULT_LPO_SUBFOLDERS.copy())
@@ -120,6 +124,8 @@ class FlowClientConfig:
         
         return cls(
             create_folders_url=os.environ.get("POWER_AUTOMATE_CREATE_FOLDERS_URL"),
+            nesting_complete_url=os.environ.get("POWER_AUTOMATE_NESTING_COMPLETE_URL"),  # v1.6.7
+            upload_files_url=os.environ.get("POWER_AUTOMATE_UPLOAD_FILES_URL"),          # v1.6.9
             lpo_subfolders=subfolders,
             max_retries=int(os.environ.get("FLOW_MAX_RETRIES", "3")),
             connect_timeout=float(os.environ.get("FLOW_CONNECT_TIMEOUT", "5.0")),
@@ -350,20 +356,25 @@ class FlowClient:
         self.close()
 
 
-# Module-level singleton for convenience
+# Module-level singleton for convenience (thread-safe v1.6.9)
+import threading
 _flow_client: Optional[FlowClient] = None
+_flow_client_lock = threading.Lock()
 
 
 def get_flow_client() -> FlowClient:
     """
-    Get the singleton FlowClient instance.
+    Get the singleton FlowClient instance (thread-safe).
     
     Returns:
         FlowClient instance configured from environment
     """
     global _flow_client
     if _flow_client is None:
-        _flow_client = FlowClient()
+        with _flow_client_lock:
+            # Double-check locking pattern
+            if _flow_client is None:
+                _flow_client = FlowClient()
     return _flow_client
 
 
@@ -395,3 +406,130 @@ def trigger_create_lpo_folders(
         folder_path=folder_path,
         correlation_id=correlation_id
     )
+
+
+def trigger_nesting_complete_flow(
+    nest_session_id: str,
+    tag_id: str,
+    sap_lpo_reference: str,
+    brand: str,
+    json_blob_url: Optional[str],
+    excel_file_url: Optional[str],
+    uploaded_by: str,
+    planned_date: Optional[str],
+    area_consumed: float,
+    area_type: str,
+    correlation_id: str,
+    lpo_folder_url: Optional[str] = None  # v1.6.7
+) -> FlowTriggerResult:
+    """
+    Trigger the Nesting Complete flow to:
+    1. Copy files to LPO folder in SharePoint
+    2. Send acknowledgment email to uploader
+    
+    Args:
+        nest_session_id: Nesting session ID
+        tag_id: Tag ID processed
+        sap_lpo_reference: LPO SAP Reference
+        brand: Brand (KIMMCO/WTI)
+        json_blob_url: URL to JSON in blob storage
+        excel_file_url: URL to original Excel file
+        uploaded_by: Email of uploader
+        planned_date: Planned production date
+        area_consumed: Area consumed (m²)
+        area_type: Internal or External
+        correlation_id: Trace ID for correlation
+        lpo_folder_url: Optional override for LPO SharePoint URL
+    
+    Returns:
+        FlowTriggerResult with trigger status
+    """
+    client = get_flow_client()
+    
+    if not client.config.nesting_complete_url:
+        logger.warning(
+            f"[{correlation_id}] POWER_AUTOMATE_NESTING_COMPLETE_URL not configured - skipping flow trigger"
+        )
+        return FlowTriggerResult(
+            success=False,
+            flow_type=FlowType.NESTING_COMPLETE,
+            correlation_id=correlation_id,
+            error_message="Flow URL not configured"
+        )
+    
+    payload = {
+        "nest_session_id": nest_session_id,
+        "tag_id": tag_id,
+        "sap_lpo_reference": sap_lpo_reference,
+        "brand": brand,
+        "json_blob_url": json_blob_url,
+        "excel_file_url": excel_file_url,
+        "uploaded_by": uploaded_by,
+        "planned_date": planned_date,
+        "area_consumed": area_consumed,
+        "area_type": area_type,
+        "correlation_id": correlation_id,
+        "lpo_folder_url": lpo_folder_url
+    }
+    
+    return client._trigger_flow(
+        flow_type=FlowType.NESTING_COMPLETE,
+        url=client.config.nesting_complete_url,
+        payload=payload,
+        correlation_id=correlation_id
+    )
+
+
+def trigger_upload_files_flow(
+    lpo_folder_url: str,
+    files: list,
+    correlation_id: str
+) -> FlowTriggerResult:
+    """
+    Trigger generic flow to upload files to SharePoint.
+    
+    v1.6.9: Created to abstract file updates.
+    
+    Args:
+        lpo_folder_url: Target LPO root folder URL
+        files: List of FileUploadItem objects (file_name, content, subfolder)
+        correlation_id: Trace ID for logging
+        
+    Returns:
+        FlowTriggerResult with status
+    """
+    client = get_flow_client()
+    
+    if not client.config.upload_files_url:
+        logger.warning(
+            f"[{correlation_id}] POWER_AUTOMATE_UPLOAD_FILES_URL not configured - skipping upload trigger"
+        )
+        return FlowTriggerResult(
+            success=False,
+            flow_type=FlowType.UPLOAD_FILES,
+            correlation_id=correlation_id,
+            error_message="Flow URL not configured"
+        )
+    
+    # Convert FileUploadItem objects to dict list
+    files_payload = []
+    for f in files:
+        if hasattr(f, 'model_dump'):
+            files_payload.append(f.model_dump())
+        else:
+            files_payload.append(f)  # Assume dict if not model
+            
+    payload = {
+        "lpo_folder_url": lpo_folder_url,
+        "files": files_payload,
+        "correlation_id": correlation_id
+    }
+    
+    return client._trigger_flow(
+        flow_type=FlowType.UPLOAD_FILES,
+        url=client.config.upload_files_url,
+        payload=payload,
+        correlation_id=correlation_id
+    )
+
+

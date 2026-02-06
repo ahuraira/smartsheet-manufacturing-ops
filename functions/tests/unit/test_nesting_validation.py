@@ -153,12 +153,24 @@ class TestValidation:
 @pytest.mark.integration
 class TestFnParseNestingIntegration:
     
+    @patch('fn_parse_nesting.trigger_nesting_complete_flow')
+    @patch('fn_parse_nesting.upload_nesting_json')
+    @patch('fn_parse_nesting.upload_content_blob')
+    @patch('fn_parse_nesting.atomic_increment')
+    @patch('fn_parse_nesting.get_lpo_details')
+    @patch('fn_parse_nesting.validate_tag_is_planned')
     @patch('fn_parse_nesting.NestingFileParser')
     @patch('fn_parse_nesting.create_exception')
     def test_main_success_flow(
         self, 
         mock_create_exception, 
         mock_parser_cls,
+        mock_validate_planned,
+        mock_lpo_details,
+        mock_atomic_increment,
+        mock_upload_content,
+        mock_upload_json,
+        mock_trigger_flow,
         patched_client
     ):
         # Setup Mocks
@@ -172,6 +184,22 @@ class TestFnParseNestingIntegration:
             )
         )
         mock_parser.parse.return_value.processing_time_ms = 100
+        
+        # Setup v1.6.9 mocks
+        mock_validate_planned.return_value = ValidationResult(
+            is_valid=True, planning_row_id=100, planned_date="2026-02-04"
+        )
+        mock_lpo_details.return_value = ValidationResult(
+            is_valid=True, lpo_row_id=200, brand="DUCTMATE", area_type="External"
+        )
+        mock_atomic_increment.return_value = MagicMock(
+            success=True, old_value=10.0, new_value=20.0, retries_used=0
+        )
+        mock_upload_json.return_value = "https://blob.storage/json"
+        mock_upload_content.return_value = "https://blob.storage/excel"
+        mock_trigger_flow.return_value = MagicMock(
+            to_dict=lambda: {"status": "triggered", "fire_and_forget": True}
+        )
         
         # Setup Smartsheet Data
         patched_client.add_row( # Use patched_client here too

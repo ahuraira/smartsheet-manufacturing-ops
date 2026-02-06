@@ -92,19 +92,22 @@ from shared import (
     # Audit (shared - DRY)
     create_exception,
     log_user_action,
+    
+    # LPO Service (v1.6.6 DRY)
+    find_lpo_by_sap_reference,
+    get_lpo_quantities,
+    get_lpo_status,
 )
 
 logger = logging.getLogger(__name__)
 
-# Get manifest for column name resolution
-_manifest = None
+# DRY (v1.6.5): Use shared helper instead of local duplicate
+from shared import get_physical_column_name
+_get_physical_column_name = get_physical_column_name  # Alias for backward compat
 
-def _get_physical_column_name(sheet_logical: str, column_logical: str) -> str:
-    """Get physical column name from manifest."""
-    global _manifest
-    if _manifest is None:
-        _manifest = get_manifest()
-    return _manifest.get_column_name(sheet_logical, column_logical)
+# DEPRECATED: _manifest is no longer used (we use get_physical_column_name from shared)
+# Kept for backward compatibility with tests that patch fn_schedule_tag._manifest
+_manifest = None
 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -274,19 +277,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
-        # 5. PO balance check
-        po_quantity = parse_float_safe(lpo.get(_get_physical_column_name("LPO_MASTER", "PO_QUANTITY_SQM")), 0)
-        delivered_qty = parse_float_safe(lpo.get(_get_physical_column_name("LPO_MASTER", "DELIVERED_QUANTITY_SQM")), 0)
-        planned_qty = parse_float_safe(lpo.get(_get_physical_column_name("LPO_MASTER", "PLANNED_QUANTITY")), 0)
-        allocated_qty = parse_float_safe(lpo.get(_get_physical_column_name("LPO_MASTER", "ALLOCATED_QUANTITY")), 0)
+        # 5. PO balance check (using shared LPO service)
+        quantities = get_lpo_quantities(lpo)
         
         # Get planned quantity from request or tag
         schedule_qty = request.planned_qty_m2
         if schedule_qty is None:
             schedule_qty = parse_float_safe(tag.get(_get_physical_column_name("TAG_REGISTRY", "ESTIMATED_QUANTITY")), 0)
         
-        current_committed = delivered_qty + planned_qty + allocated_qty
-        if current_committed + schedule_qty > po_quantity * 1.05:  # 5% tolerance
+        if quantities.total_committed + schedule_qty > quantities.po_quantity * 1.05:  # 5% tolerance
             logger.warning(f"[{trace_id}] Insufficient PO balance")
             exception_id = create_exception(
                 client=client,
@@ -296,14 +295,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 source=ExceptionSource.INGEST,
                 related_tag_id=request.tag_id,
                 quantity=schedule_qty,
-                message=f"PO balance exceeded. PO: {po_quantity}, Committed: {current_committed}, Requested: {schedule_qty}"
+                message=f"PO balance exceeded. PO: {quantities.po_quantity}, Committed: {quantities.total_committed}, Requested: {schedule_qty}"
             )
             return func.HttpResponse(
                 json.dumps({
                     "status": "BLOCKED",
                     "exception_id": exception_id,
                     "trace_id": trace_id,
-                    "message": f"Insufficient PO balance. Available: {po_quantity - current_committed:.2f}, Requested: {schedule_qty:.2f}"
+                    "message": f"Insufficient PO balance. Available: {quantities.available_balance:.2f}, Requested: {schedule_qty:.2f}"
                 }),
                 status_code=422,
                 mimetype="application/json"

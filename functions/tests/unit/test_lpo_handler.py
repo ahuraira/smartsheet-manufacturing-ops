@@ -52,6 +52,9 @@ class TestLPOIngestHandler:
         mock_get_manifest_handler.return_value = mock_manifest
         mock_get_manifest_utils.return_value = mock_manifest
         
+        # DEDUP CHECK (v1.6.5): Early dedup uses find_row - return None (no existing)
+        mock_client.find_row.return_value = None
+        
         # Setup row data with all fields
         mock_client.get_row.return_value = {
             101: "SAP-123",
@@ -84,7 +87,7 @@ class TestLPOIngestHandler:
         request_body = json.loads(args[0].get_body())
         
         assert request_body["sap_reference"] == "SAP-123"
-        assert request_body["wastage_pct"] == 0.05
+        assert request_body["wastage_pct"] == 5.0
         assert request_body["terms_of_payment"] == "60 Days"
         assert request_body["remarks"] == "Urgent delivery"
         
@@ -101,6 +104,9 @@ class TestLPOIngestHandler:
         mock_get_client.return_value = mock_client
         mock_get_manifest_handler.return_value = mock_manifest
         mock_get_manifest_utils.return_value = mock_manifest
+        
+        # DEDUP CHECK (v1.6.5): Early dedup uses find_row - return None (no existing)
+        mock_client.find_row.return_value = None
         
         # Missing required SAP Reference
         mock_client.get_row.return_value = {
@@ -130,6 +136,10 @@ class TestLPOIngestHandler:
     def test_lpo_ingest_missing_row(self, mock_core_func, mock_get_manifest_handler, mock_get_manifest_utils, mock_get_client, mock_client, mock_manifest):
         """Test handling when row is not found."""
         mock_get_client.return_value = mock_client
+        
+        # DEDUP CHECK (v1.6.5): Early dedup uses find_row - return None (no existing)
+        mock_client.find_row.return_value = None
+        
         mock_client.get_row.return_value = None
         
         event = RowEvent(sheet_id=1, row_id=999, action="created")

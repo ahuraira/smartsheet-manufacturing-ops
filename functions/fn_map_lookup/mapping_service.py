@@ -323,9 +323,7 @@ class MappingService:
         from shared.manifest import get_manifest
         
         manifest = get_manifest()
-        columns = manifest["sheets"]["MATERIAL_MASTER"]["columns"]
-        
-        return {name: col["id"] for name, col in columns.items()}
+        return manifest.get_all_column_ids("MATERIAL_MASTER")
     
     def _check_overrides(
         self,
@@ -444,9 +442,7 @@ class MappingService:
         from shared.manifest import get_manifest
         
         manifest = get_manifest()
-        columns = manifest["sheets"]["MAPPING_OVERRIDE"]["columns"]
-        
-        return {name: col["id"] for name, col in columns.items()}
+        return manifest.get_all_column_ids("MAPPING_OVERRIDE")
     
     def _check_existing_history(self, ingest_line_id: str, trace_id: str) -> Optional[MappingResult]:
         """
@@ -548,9 +544,7 @@ class MappingService:
         from shared.manifest import get_manifest
         
         manifest = get_manifest()
-        columns = manifest["sheets"]["MAPPING_HISTORY"]["columns"]
-        
-        return {name: col["id"] for name, col in columns.items()}
+        return manifest.get_all_column_ids("MAPPING_HISTORY")
     
     def _create_exception(
         self,
@@ -591,9 +585,7 @@ class MappingService:
         from shared.manifest import get_manifest
         
         manifest = get_manifest()
-        columns = manifest["sheets"]["MAPPING_EXCEPTION"]["columns"]
-        
-        return {name: col["id"] for name, col in columns.items()}
+        return manifest.get_all_column_ids("MAPPING_EXCEPTION")
     
     def invalidate_cache(self) -> None:
         """Force cache refresh on next lookup."""

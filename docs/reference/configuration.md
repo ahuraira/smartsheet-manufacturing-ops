@@ -57,6 +57,17 @@ This document provides a complete reference of all configuration options in the 
 |----------|-------------|---------|
 | `LPO_SUBFOLDERS` | Comma-separated subfolder names | `01_LPO_Documents,02_Costing,03_Amendments,99_Other` |
 
+### Azure Blob Storage (v1.6.7)
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `BLOB_STORAGE_CONNECTION` | Azure Storage connection string | `DefaultEndpointsProtocol=https;...` |
+| `BLOB_CONTAINER_NESTING` | Container for nesting outputs | `nesting-outputs` |
+
+### Event Routing (v1.4.0)
+
+Event routing configuration is defined in `event_routing.json` (not environment variables). See [Event Dispatcher](../reference/api_reference.md#event-dispatcher) for routing table structure.
+
 ### Setting Environment Variables
 
 #### Local Development (local.settings.json)

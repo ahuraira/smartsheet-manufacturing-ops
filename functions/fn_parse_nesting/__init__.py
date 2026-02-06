@@ -30,7 +30,16 @@ from shared import (
     ExceptionSeverity,
     ExceptionSource,
     ActionType,
+    # v1.6.9 SOTA: Moved from inline imports
+    atomic_increment,
+    AtomicUpdateResult,
 )
+from shared.models import ScheduleStatus  # v1.6.9: Moved from inline
+from shared.manifest import get_manifest  # v1.6.9: Moved from inline
+from shared.logical_names import Sheet, Column  # v1.6.9: For atomic updates
+from shared.blob_storage import upload_nesting_json, upload_content_blob  # v1.6.9
+from shared.power_automate import trigger_nesting_complete_flow  # v1.6.9
+
 from .parser import NestingFileParser
 from .models import ParsingResult, NestingExecutionRecord
 from .validation import (
@@ -39,9 +48,12 @@ from .validation import (
     check_duplicate_file,
     check_duplicate_request_id,
     calculate_file_hash,
+    validate_tag_is_planned,  # v1.6.7: Prerequisite validation
+    get_lpo_details,  # v1.6.7: Fail-fast LPO enrichment
 )
 from .nesting_logger import NestingLogger
 from .config import get_exception_assignee, get_sla_hours, get_safe_user_email
+from .bom_orchestrator import process_bom_from_record  # v1.6.9: Moved from inline
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -177,9 +189,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 trace_id=trace_id,
                 request_id=client_request_id
             )
+        
+        # v1.6.7: Derive SAP Reference from Tag Registry if not provided in payload
+        if not sap_lpo_reference:
+            sap_lpo_reference = tag_validation.tag_lpo_ref
+            if sap_lpo_reference:
+                logger.info(f"SAP Reference derived from Tag Registry: {sap_lpo_reference}", extra={"trace_id": trace_id})
+            else:
+                logger.warning(f"Tag {tag_id} has no linked LPO in Tag Registry", extra={"trace_id": trace_id})
+                # Still proceed - LPO details validation will handle the error gracefully
             
-        # 6b. Validate LPO Ownership
-        if sap_lpo_reference:
+        # 6b. Validate LPO Ownership (only if both are present)
+        if sap_lpo_reference and tag_validation.tag_lpo_ref:
             lpo_validation = validate_tag_lpo_ownership(tag_validation, sap_lpo_reference)
             if not lpo_validation.is_valid:
                 logger.warning(f"LPO Mismatch: {lpo_validation.error_message}", extra={"trace_id": trace_id})
@@ -204,6 +225,65 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     request_id=client_request_id
                 )
 
+        # 6c. PREREQUISITE: Validate Tag is Planned (v1.6.7)
+        planning_validation = validate_tag_is_planned(client, tag_id)
+        if not planning_validation.is_valid:
+            logger.warning(f"Tag not planned: {planning_validation.error_message}", extra={"trace_id": trace_id})
+            
+            exception_id = create_exception(
+                client=client,
+                trace_id=trace_id,
+                source=ExceptionSource.PARSER,
+                reason_code=ReasonCode.TAG_NOT_FOUND,  # Closest match
+                severity=ExceptionSeverity.HIGH,
+                related_tag_id=tag_id,
+                message=f"{planning_validation.error_message}. URL: {file_url}"
+            )
+            
+            return _validation_error_response(
+                status="VALIDATION_ERROR",
+                error_code=planning_validation.error_code,
+                error_message=planning_validation.error_message,
+                exception_id=exception_id,
+                trace_id=trace_id,
+                request_id=client_request_id
+            )
+        
+        # 6d. FAIL-FAST: Get LPO Details (v1.6.7)
+        lpo_details = get_lpo_details(client, sap_lpo_reference)
+        if not lpo_details.is_valid:
+            logger.warning(f"LPO validation failed: {lpo_details.error_message}", extra={"trace_id": trace_id})
+            
+            # Map error code to ReasonCode
+            rc = ReasonCode.LPO_NOT_FOUND if lpo_details.error_code == "LPO_NOT_FOUND" else ReasonCode.LPO_INVALID_DATA
+            
+            exception_id = create_exception(
+                client=client,
+                trace_id=trace_id,
+                source=ExceptionSource.PARSER,
+                reason_code=rc,
+                severity=ExceptionSeverity.HIGH,
+                related_tag_id=tag_id,
+                message=f"{lpo_details.error_message}. URL: {file_url}"
+            )
+            
+            return _validation_error_response(
+                status="VALIDATION_ERROR",
+                error_code=lpo_details.error_code,
+                error_message=lpo_details.error_message,
+                exception_id=exception_id,
+                trace_id=trace_id,
+                request_id=client_request_id
+            )
+        
+        # Enrichment data for logging and response
+        brand = lpo_details.brand
+        area_type = lpo_details.area_type
+        lpo_row_id = lpo_details.lpo_row_id
+        lpo_folder_url = lpo_details.lpo_folder_url
+        planned_date = planning_validation.planned_date
+        planning_row_id = planning_validation.planning_row_id
+
         # 7. Phase 4: Execution & Logging
         
         # 7a. Generate Nest Session ID
@@ -217,7 +297,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             tag_id=tag_id,
             file_hash=file_hash,
             client_request_id=client_request_id,
-            sap_lpo_reference=sap_lpo_reference
+            sap_lpo_reference=sap_lpo_reference,
+            brand=brand,  # v1.6.7: From LPO
+            planned_date=planned_date  # v1.6.7: From Production Planning
         )
         
         # 7c. Attach Files
@@ -235,21 +317,83 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 )
                 if att2: attachments.append(att2)
         
-        # 7d. Update Tag Status
+        # Calculate consumed area (Internal/External) for updates
+        billing = record.billing_metrics
+        consumed_area = billing.total_external_area_m2 if area_type == "External" else billing.total_internal_area_m2
+        
+        # 7d. Update Tag Status (v1.6.7: Update area)
         if tag_validation.tag_row_id:
             impact = record.raw_material_panel.inventory_impact
             efficiency = record.raw_material_panel.efficiency_metrics
             nest_logger.update_tag_status(
                 tag_row_id=tag_validation.tag_row_id,
                 sheets_used=impact.utilized_sheets_count,
-                wastage=efficiency.waste_pct
+                wastage=efficiency.waste_pct,
+                area_consumed=consumed_area  # v1.6.7: Update ESTIMATED_QUANTITY
             )
+        
+        # 7d2. Update Production Planning Status (v1.6.7)
+        # v1.6.9 SOTA: Track warnings instead of silently swallowing
+        warnings = []
+        
+        if planning_row_id:
+            try:
+                client.update_row(
+                    Sheet.PRODUCTION_PLANNING,
+                    planning_row_id,
+                    {Column.PRODUCTION_PLANNING.STATUS: ScheduleStatus.NESTING_UPLOADED.value}
+                )
+                logger.info(f"Updated Production Planning row {planning_row_id} to 'Nesting Uploaded'", extra={"trace_id": trace_id})
+            except Exception as pp_err:
+                logger.error(f"Failed to update Production Planning status: {pp_err}", extra={"trace_id": trace_id})
+                # v1.6.9 SOTA: Create exception for tracking
+                create_exception(
+                    client=client,
+                    trace_id=trace_id,
+                    source=ExceptionSource.PARSER,
+                    reason_code=ReasonCode.SYSTEM_ERROR,
+                    severity=ExceptionSeverity.LOW,
+                    related_tag_id=tag_id,
+                    message=f"Failed to update Production Planning status: {pp_err}"
+                )
+                warnings.append({"code": "PP_UPDATE_FAILED", "message": str(pp_err)})
+        
+        # 7d3. Update LPO Allocated Quantity (v1.6.7)
+        # v1.6.9 SOTA: Use atomic_increment to prevent race conditions
+        if lpo_row_id and consumed_area > 0:
+            alloc_result = atomic_increment(
+                client=client,
+                sheet_ref=Sheet.LPO_MASTER,
+                row_id=lpo_row_id,
+                column_ref=Column.LPO_MASTER.ALLOCATED_QUANTITY,
+                increment_by=consumed_area,
+                trace_id=trace_id
+            )
+            
+            if alloc_result.success:
+                logger.info(
+                    f"Updated LPO {sap_lpo_reference} ALLOCATED_QUANTITY: "
+                    f"{alloc_result.old_value} -> {alloc_result.new_value} "
+                    f"(area_type={area_type}, retries={alloc_result.retries_used})",
+                    extra={"trace_id": trace_id}
+                )
+            else:
+                logger.error(f"Failed to update LPO allocated quantity: {alloc_result.error_message}", extra={"trace_id": trace_id})
+                # v1.6.9 SOTA: Create exception for tracking
+                create_exception(
+                    client=client,
+                    trace_id=trace_id,
+                    source=ExceptionSource.PARSER,
+                    reason_code=ReasonCode.SYSTEM_ERROR,
+                    severity=ExceptionSeverity.MEDIUM,  # MEDIUM because affects inventory
+                    related_tag_id=tag_id,
+                    message=f"Failed to update LPO ALLOCATED_QUANTITY: {alloc_result.error_message}"
+                )
+                warnings.append({"code": "LPO_ALLOC_FAILED", "message": alloc_result.error_message})
         
         # 7e. Generate BOM and Map Materials
         bom_result = None
         try:
-            from .bom_orchestrator import process_bom_from_record
-            
             # Get LPO ID from tag validation if available
             lpo_id = tag_validation.lpo_id if hasattr(tag_validation, 'lpo_id') else sap_lpo_reference
             
@@ -268,7 +412,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
         except Exception as bom_err:
             # BOM processing failure should not fail the entire parse
-            logger.error(f"BOM processing failed (non-fatal): {bom_err}", extra={"trace_id": trace_id})
+            logger.error(f"BOM processing failed: {bom_err}", extra={"trace_id": trace_id})
+            warnings.append({"code": "BOM_FAILED", "message": str(bom_err)})
             
         # 7f. Log User Action
         log_user_action(
@@ -280,8 +425,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             notes=f"Nesting completed. Session: {nest_session_id}",
             trace_id=trace_id
         )
-
-        # 8. Success Response
         logger.info(f"Nesting processed successfully: {nest_session_id}", extra={"trace_id": trace_id})
         
         result_wrapper = ParsingResult(
@@ -310,6 +453,98 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "exception_lines": bom_result.exception_lines,
                 "success": bom_result.success
             }
+        
+        # v1.6.7: Add enrichment data for Power Automate
+        response_data["enrichment"] = {
+            "brand": brand,
+            "area_type": area_type,
+            "planned_date": planned_date,
+            "lpo_row_id": lpo_row_id,
+            "lpo_folder_url": lpo_folder_url,
+            "planning_row_id": planning_row_id,
+            "sap_lpo_reference": sap_lpo_reference,
+            "uploaded_by": uploaded_by
+        }
+        
+        # 8a. Upload Files to Blob Storage (v1.6.7)
+        json_blob_url = None
+        excel_blob_url = None
+        
+        try:
+            # v1.6.9: Imports moved to module level
+            # Upload JSON Output
+            json_blob_url = upload_nesting_json(
+                record_data=record.model_dump_rounded(),
+                nest_session_id=nest_session_id,
+                sap_lpo_reference=sap_lpo_reference,
+                trace_id=trace_id
+            )
+            if json_blob_url:
+                response_data["json_blob_url"] = json_blob_url
+                logger.info(f"JSON uploaded to blob: {json_blob_url}", extra={"trace_id": trace_id})
+                
+            # Upload Original Excel Input
+            if file_bytes:
+                excel_blob_url = upload_content_blob(
+                    content=file_bytes,
+                    blob_name=filename,
+                    trace_id=trace_id,
+                    folder_path=sap_lpo_reference,
+                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                if excel_blob_url:
+                    response_data["excel_blob_url"] = excel_blob_url
+                    logger.info(f"Excel uploaded to blob: {excel_blob_url}", extra={"trace_id": trace_id})
+                    
+        except Exception as blob_err:
+            logger.error(f"Failed to upload files to blob: {blob_err}", extra={"trace_id": trace_id})
+            # v1.6.9 SOTA: Create exception for tracking
+            create_exception(
+                client=client,
+                trace_id=trace_id,
+                source=ExceptionSource.PARSER,
+                reason_code=ReasonCode.FILE_UPLOAD_ERROR,
+                severity=ExceptionSeverity.LOW,
+                related_tag_id=tag_id,
+                message=f"Failed to upload files to blob storage: {blob_err}"
+            )
+            warnings.append({"code": "BLOB_UPLOAD_FAILED", "message": str(blob_err)})
+        
+        # 8b. Trigger Power Automate flow (v1.6.7)
+        # v1.6.9 SOTA: consumed_area already calculated above (DRY fix)
+        try:
+            pa_result = trigger_nesting_complete_flow(
+                nest_session_id=nest_session_id,
+                tag_id=tag_id,
+                sap_lpo_reference=sap_lpo_reference,
+                brand=brand,
+                json_blob_url=json_blob_url,
+                excel_file_url=excel_blob_url or file_url,  # Prefer blob URL for PA
+                uploaded_by=uploaded_by,
+                planned_date=planned_date,
+                area_consumed=consumed_area,
+                area_type=area_type,
+                correlation_id=trace_id,
+                lpo_folder_url=lpo_folder_url
+            )
+            response_data["power_automate"] = pa_result.to_dict()
+        except Exception as pa_err:
+            logger.error(f"Failed to trigger Power Automate: {pa_err}", extra={"trace_id": trace_id})
+            # v1.6.9 SOTA: Create exception for tracking
+            create_exception(
+                client=client,
+                trace_id=trace_id,
+                source=ExceptionSource.PARSER,
+                reason_code=ReasonCode.SYSTEM_ERROR,
+                severity=ExceptionSeverity.LOW,
+                related_tag_id=tag_id,
+                message=f"Failed to trigger Power Automate flow: {pa_err}"
+            )
+            warnings.append({"code": "PA_TRIGGER_FAILED", "message": str(pa_err)})
+        
+        # v1.6.9 SOTA: Include warnings in response for transparency
+        if warnings:
+            response_data["warnings"] = warnings
         
         return func.HttpResponse(
             body=json.dumps(response_data, indent=2),

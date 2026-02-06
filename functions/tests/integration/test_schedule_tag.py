@@ -530,12 +530,15 @@ class TestScheduleTagMachineValidation:
         
         from tests.conftest import MockSmartsheetClient, MockWorkspaceManifest
         mock_client = MockSmartsheetClient(mock_storage)
+        mock_manifest = MockWorkspaceManifest()
         
         with patch('fn_schedule_tag.get_smartsheet_client', return_value=mock_client):
-            with patch('fn_schedule_tag.get_manifest', return_value=MockWorkspaceManifest()):
-                with patch('fn_schedule_tag._manifest', MockWorkspaceManifest()):
-                    from fn_schedule_tag import main
-                    response = main(mock_http_request(request_data))
+            with patch('fn_schedule_tag.get_manifest', return_value=mock_manifest):
+                with patch('fn_schedule_tag._manifest', mock_manifest):
+                    # v1.6.5 DRY: Also patch shared.manifest.get_manifest for the shared helper
+                    with patch('shared.manifest.get_manifest', return_value=mock_manifest):
+                        from fn_schedule_tag import main
+                        response = main(mock_http_request(request_data))
         
         assert response.status_code == 422
         body = json.loads(response.get_body())

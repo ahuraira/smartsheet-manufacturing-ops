@@ -46,17 +46,51 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
     Handle Tag ingestion from staging sheet.
     
     Flow:
-    1. Fetch row data by ID
-    2. Extract values by column ID (via manifest)
-    3. Fetch row attachments (multi-file support)
-    4. Build TagIngestRequest
-    5. Call fn_ingest_tag directly
+    1. Early dedup check (v1.6.5) - prevent duplicate processing on retries
+    2. Fetch row data by ID
+    3. Extract values by column ID (via manifest)
+    4. Fetch row attachments (multi-file support)
+    5. Build TagIngestRequest
+    6. Call fn_ingest_tag directly
     """
     trace_id = event.trace_id or generate_trace_id()
     logger.info(f"[{trace_id}] Processing Tag ingest for row {event.row_id}")
     
+    # Build deterministic client_request_id FIRST
+    client_request_id = f"staging-tag-{event.row_id}"
+    
     try:
         client = get_smartsheet_client()
+        
+        # =====================================================================
+        # EARLY DEDUP CHECK (v1.6.5)
+        # Check if this staging row was already processed BEFORE any other work
+        # This prevents duplicate processing on webhook retries at the earliest point
+        # =====================================================================
+        from shared import Sheet, Column
+        existing = client.find_row(
+            Sheet.TAG_REGISTRY,
+            Column.TAG_REGISTRY.CLIENT_REQUEST_ID,
+            client_request_id
+        )
+        if existing:
+            # Get tag ID from physical column name
+            from shared import get_manifest
+            manifest = get_manifest()
+            tag_name_col = manifest.get_column_name("TAG_REGISTRY", "TAG_NAME") or "Tag Sheet Name / Rev"
+            existing_tag_id = (
+                existing.get(tag_name_col) or
+                existing.get("Tag Sheet Name / Rev") or
+                existing.get("id")
+            )
+            logger.info(f"[{trace_id}] DEDUP: Staging row {event.row_id} already processed as {existing_tag_id}")
+            return DispatchResult(
+                status="ALREADY_PROCESSED",
+                handler="tag_ingest",
+                message=f"This staging row was already processed as {existing_tag_id}",
+                trace_id=trace_id,
+                details={"tag_id": existing_tag_id, "client_request_id": client_request_id}
+            )
         
         # Fetch row by immutable ID
         row_data = client.get_row(event.sheet_id, event.row_id)
@@ -76,6 +110,8 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
         required_area = get_cell_value_by_logical_name(row_data, sheet_logical, "ESTIMATED_QUANTITY")
         delivery_date = get_cell_value_by_logical_name(row_data, sheet_logical, "REQUIRED_DELIVERY_DATE")
         tag_name = get_cell_value_by_logical_name(row_data, sheet_logical, "TAG_SHEET_NAME_REV")
+        # Extract received_through from staging (v1.6.7) - default to API if null
+        received_through = get_cell_value_by_logical_name(row_data, sheet_logical, "RECEIVED_THROUGH") or "API"
         
         # =====================================================================
         # Multi-File Attachment Extraction (SOTA - v1.6.3)
@@ -90,11 +126,8 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
         )
         
         # Build request
-        # CRITICAL: Use deterministic client_request_id (no timestamp!)
-        # Same staging row must always map to same idempotency key
-        # This prevents duplicate creation on webhook retries (fixes v1.6.4)
-        client_request_id = f"staging-tag-{event.row_id}"
-        
+        # NOTE: client_request_id is built at the top of the function (v1.6.5)
+        # for early dedup check
         try:
             request = TagIngestRequest(
                 client_request_id=client_request_id,
@@ -103,6 +136,7 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
                 requested_delivery_date=delivery_date,
                 uploaded_by=event.actor_id or "system",
                 tag_name=tag_name,  # Now populated from staging
+                received_through=received_through,  # v1.6.7: from staging or default API
                 files=files,  # Multi-file support
             )
         except ValidationError as e:
@@ -113,7 +147,8 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
                 reason_code=ReasonCode.LPO_INVALID_DATA,
                 severity=ExceptionSeverity.MEDIUM,
                 source=ExceptionSource.INGEST,
-                message=f"Validation error in staging row {event.row_id}: {str(e)}"
+                message=f"Validation error in staging row {event.row_id}: {str(e)}",
+                client_request_id=client_request_id  # DEDUP (v1.6.5)
             )
             return DispatchResult(
                 status="EXCEPTION_LOGGED",

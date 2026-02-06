@@ -41,6 +41,8 @@ from shared import (
     # File attachment models
     FileAttachment,
     FileType,
+    # Percentage normalization (v1.6.7)
+    normalize_percentage,
 )
 from ..models import RowEvent, DispatchResult
 
@@ -52,17 +54,49 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
     Handle LPO ingestion from staging sheet.
     
     Flow:
-    1. Fetch row data by ID
-    2. Extract values by column ID (via manifest)
-    3. Build LPOIngestRequest
-    4. Call fn_lpo_ingest directly
+    1. Early dedup check (v1.6.5) - prevent duplicate processing on retries
+    2. Fetch row data by ID
+    3. Extract values by column ID (via manifest)
+    4. Build LPOIngestRequest
+    5. Call fn_lpo_ingest directly
     """
     trace_id = event.trace_id or generate_trace_id()
     logger.info(f"[{trace_id}] Processing LPO ingest for row {event.row_id}")
     
+    # Build deterministic client_request_id FIRST (v1.6.5)
+    client_request_id = f"staging-lpo-{event.row_id}"
+    
     try:
         client = get_smartsheet_client()
         manifest = get_manifest()
+        
+        # =====================================================================
+        # EARLY DEDUP CHECK (v1.6.5)
+        # Check if this staging row was already processed BEFORE any other work
+        # This prevents duplicate processing on webhook retries at the earliest point
+        # =====================================================================
+        from shared import Sheet, Column
+        existing = client.find_row(
+            Sheet.LPO_MASTER,
+            Column.LPO_MASTER.CLIENT_REQUEST_ID,
+            client_request_id
+        )
+        if existing:
+            # Get LPO ID from physical column name
+            sap_ref_col = manifest.get_column_name("LPO_MASTER", "SAP_REFERENCE") or "SAP Reference"
+            existing_lpo_id = (
+                existing.get(sap_ref_col) or
+                existing.get("SAP Reference") or
+                existing.get("id")
+            )
+            logger.info(f"[{trace_id}] DEDUP: Staging row {event.row_id} already processed as {existing_lpo_id}")
+            return DispatchResult(
+                status="ALREADY_PROCESSED",
+                handler="lpo_ingest",
+                message=f"This staging row was already processed as {existing_lpo_id}",
+                trace_id=trace_id,
+                details={"lpo_id": existing_lpo_id, "client_request_id": client_request_id}
+            )
         
         # Fetch row by immutable ID
         row_data = client.get_row(event.sheet_id, event.row_id)
@@ -106,11 +140,8 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
         )
         
         # Build request with idempotency key
-        # CRITICAL: Use deterministic client_request_id (no timestamp!)
-        # Same staging row must always map to same idempotency key
-        # This prevents duplicate creation on webhook retries (fixes v1.6.4)
-        client_request_id = f"staging-lpo-{event.row_id}"
-        
+        # NOTE: client_request_id is built at the top of the function (v1.6.5)
+        # for early dedup check
         try:
             request = LPOIngestRequest(
                 client_request_id=client_request_id,
@@ -123,7 +154,7 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
                 # Optional fields
                 customer_lpo_ref=customer_lpo_ref,
                 terms_of_payment=terms_of_payment or "30 Days Credit",
-                wastage_pct=float(wastage_pct or 0),
+                wastage_pct=normalize_percentage(wastage_pct, 0.0),  # v1.6.7: normalize 18, 0.18, 18%
                 hold_reason=hold_reason,
                 remarks=remarks,
                 # Attachments
@@ -139,7 +170,8 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
                 reason_code=ReasonCode.LPO_INVALID_DATA,
                 severity=ExceptionSeverity.MEDIUM,
                 source=ExceptionSource.INGEST,
-                message=f"Validation error in staging row {event.row_id}: {str(e)}"
+                message=f"Validation error in staging row {event.row_id}: {str(e)}",
+                client_request_id=client_request_id  # DEDUP (v1.6.5)
             )
             return DispatchResult(
                 status="EXCEPTION_LOGGED",
@@ -200,6 +232,9 @@ def handle_lpo_update(event: RowEvent) -> DispatchResult:
     trace_id = event.trace_id or generate_trace_id()
     logger.info(f"[{trace_id}] Processing LPO update for row {event.row_id}")
     
+    # Build deterministic client_request_id for dedup (v1.6.5)
+    client_request_id = f"staging-lpo-update-{event.row_id}"
+    
     try:
         client = get_smartsheet_client()
         manifest = get_manifest()
@@ -224,7 +259,8 @@ def handle_lpo_update(event: RowEvent) -> DispatchResult:
                 reason_code=ReasonCode.LPO_INVALID_DATA,
                 severity=ExceptionSeverity.MEDIUM,
                 source=ExceptionSource.INGEST,
-                message=f"SAP Reference missing in staging row {event.row_id}"
+                message=f"SAP Reference missing in staging row {event.row_id}",
+                client_request_id=client_request_id  # DEDUP (v1.6.5)
             )
             return DispatchResult(
                 status="EXCEPTION_LOGGED",
@@ -249,7 +285,8 @@ def handle_lpo_update(event: RowEvent) -> DispatchResult:
                 reason_code=ReasonCode.LPO_INVALID_DATA,
                 severity=ExceptionSeverity.MEDIUM,
                 source=ExceptionSource.INGEST,
-                message=f"Validation error in staging row {event.row_id}: {str(e)}"
+                message=f"Validation error in staging row {event.row_id}: {str(e)}",
+                client_request_id=client_request_id  # DEDUP (v1.6.5)
             )
             return DispatchResult(
                 status="EXCEPTION_LOGGED",

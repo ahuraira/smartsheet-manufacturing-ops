@@ -290,7 +290,13 @@ class MockSmartsheetStorage:
             if col_id and value is not None:
                 cells.append({"columnId": col_id, "value": value})
         
-        row = {"id": self._row_counter, "cells": cells}
+        now_str = datetime.utcnow().isoformat()
+        row = {
+            "id": self._row_counter, 
+            "cells": cells,
+            "createdAt": now_str,
+            "modifiedAt": now_str
+        }
         sheet["rows"].append(row)
         return {"id": self._row_counter}
     
@@ -311,6 +317,11 @@ class MockSmartsheetStorage:
                 if cell.get("columnId") == col_id and cell.get("value") == value:
                     # Convert row to dict with column names
                     row_dict = {"row_id": row["id"]}
+                    # Helper to copy system fields
+                    for key in ["createdAt", "modifiedAt", "rowNumber", "version"]:
+                        if key in row:
+                            row_dict[key] = row[key]
+
                     col_id_to_name = {c["id"]: c["title"] for c in sheet["columns"]}
                     for c in row.get("cells", []):
                         name = col_id_to_name.get(c.get("columnId"))
@@ -327,6 +338,9 @@ class MockSmartsheetStorage:
         
         for row in sheet["rows"]:
             if row["id"] == row_id:
+                # Update modifiedAt
+                row["modifiedAt"] = datetime.utcnow().isoformat()
+                
                 for col_name, value in updates.items():
                     col_id = col_name_to_id.get(col_name)
                     if col_id:

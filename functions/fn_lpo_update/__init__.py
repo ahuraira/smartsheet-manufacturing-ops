@@ -80,11 +80,9 @@ from shared import (
 
 logger = logging.getLogger(__name__)
 
-
-def _get_physical_column_name(sheet_logical: str, column_logical: str) -> Optional[str]:
-    """Get physical column name from manifest."""
-    manifest = get_manifest()
-    return manifest.get_column_name(sheet_logical, column_logical)
+# DRY (v1.6.5): Use shared helper instead of local duplicate
+from shared import get_physical_column_name
+_get_physical_column_name = get_physical_column_name  # Alias for backward compat
 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:

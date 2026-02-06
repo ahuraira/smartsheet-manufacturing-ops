@@ -333,4 +333,13 @@ class ValidationResult(BaseModel):
     error_message: Optional[str] = None
     tag_row_id: Optional[int] = None
     tag_lpo_ref: Optional[str] = None
+    # LPO enrichment fields (v1.6.7)
+    lpo_row_id: Optional[int] = None
+    brand: Optional[str] = None
+    area_type: Optional[str] = None  # "Internal" or "External"
+    lpo_folder_url: Optional[str] = None  # v1.6.7: Custom SharePoint URL
+    # Production Planning enrichment fields (v1.6.7)
+    planning_row_id: Optional[int] = None
+    planned_date: Optional[str] = None
+
 

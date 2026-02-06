@@ -1,6 +1,6 @@
 # 📘 API Reference
 
-> **Document Type:** Reference | **Version:** 1.6.3 | **Last Updated:** 2026-01-29
+> **Document Type:** Reference | **Version:** 1.6.9 | **Last Updated:** 2026-02-06
 
 This document provides complete API documentation for all Azure Functions endpoints in the Ducts Manufacturing Inventory Management System.
 
@@ -871,6 +871,12 @@ Or with base64:
     "mapped_lines": 48,
     "failed_lines": 2,
     "created_bom_ids": ["BOM-1001", "BOM-1002"]
+  },
+  "enrichment":  {
+    "brand": "KIMMCO",
+    "area_type": "External",
+    "planned_date": "2026-02-05",
+    "lpo_folder_url": "https://sharepoint.com/sites/LPO/LPO-0024"
   },
   "warnings": [],
   "trace_id": "trace-abc123def456"

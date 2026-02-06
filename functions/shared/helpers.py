@@ -18,9 +18,72 @@ from .models import ExceptionSeverity
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# Column Name Resolution (v1.6.5 - DRY compliance)
+# =============================================================================
+
+def get_physical_column_name(sheet_logical: str, column_logical: str) -> Optional[str]:
+    """
+    Get physical column name from manifest (centralized, DRY-compliant).
+    
+    This function resolves logical column names (e.g., "TAG_NAME") to their
+    physical names in Smartsheet (e.g., "Tag Sheet Name / Rev").
+    
+    Uses the manifest singleton which handles caching internally.
+    
+    Args:
+        sheet_logical: Logical sheet name (e.g., "TAG_REGISTRY", "LPO_MASTER")
+        column_logical: Logical column name (e.g., "TAG_NAME", "SAP_REFERENCE")
+        
+    Returns:
+        Physical column name from manifest, or None if not found
+        
+    Example:
+        >>> get_physical_column_name("TAG_REGISTRY", "TAG_NAME")
+        "Tag Sheet Name / Rev"
+    """
+    from .manifest import get_manifest
+    manifest = get_manifest()
+    return manifest.get_column_name(sheet_logical, column_logical)
+
+
 def generate_trace_id() -> str:
     """Generate a unique trace ID for correlation across systems."""
     return f"trace-{uuid.uuid4().hex[:12]}"
+
+
+def resolve_user_email(client, user_id: str) -> str:
+    """
+    Resolve a user identifier to an email address.
+    
+    If user_id is a numeric Smartsheet user ID, attempts to resolve it
+    to an email address. Otherwise returns the original value.
+    
+    v1.6.8: Centralized helper for consistent user identification.
+    
+    Args:
+        client: SmartsheetClient instance
+        user_id: User email or Smartsheet user ID
+        
+    Returns:
+        Email address string (or original value if resolution fails)
+    """
+    if not user_id:
+        return user_id or ""
+    
+    user_str = str(user_id).strip()
+    
+    # If it's a numeric ID, try to resolve
+    if user_str.isdigit():
+        try:
+            email = client.get_user_email(int(user_str))
+            if email:
+                logger.debug(f"Resolved user ID {user_id} to email {email}")
+                return email
+        except Exception as e:
+            logger.debug(f"Failed to resolve user ID {user_id}: {e}")
+    
+    return user_str
 
 
 def compute_file_hash(file_content: bytes) -> str:
@@ -129,6 +192,52 @@ def parse_float_safe(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (ValueError, TypeError):
         return default
+
+
+def normalize_percentage(value: Any, default: float = 0.0) -> float:
+    """
+    Normalize percentage input to a consistent format (whole number).
+    
+    Handles user input variations (v1.6.7):
+    - "18" or 18 -> 18.0
+    - "0.18" or 0.18 -> 18.0 (assumes decimal if < 1)
+    - "18%" -> 18.0 (strips % sign)
+    
+    Returns percentage as whole number (e.g., 18.0 for 18%)
+    
+    Args:
+        value: Input value (string, int, float)
+        default: Default value if parsing fails
+        
+    Returns:
+        Normalized percentage as float (whole number)
+    """
+    if value is None:
+        return default
+    
+    # Convert to string and strip whitespace
+    str_val = str(value).strip()
+    
+    # Handle empty string
+    if not str_val:
+        return default
+    
+    # Remove % sign if present
+    if str_val.endswith('%'):
+        str_val = str_val[:-1].strip()
+    
+    try:
+        num_val = float(str_val)
+        
+        # If value is between 0 and 1 (exclusive), treat as decimal
+        # e.g., 0.18 -> 18.0
+        if 0 < num_val < 1:
+            num_val = num_val * 100
+        
+        return num_val
+    except (ValueError, TypeError):
+        return default
+
 
 
 def parse_int_safe(value: Any, default: int = 0) -> int:
