@@ -22,15 +22,15 @@ High-level overview of the Ducts Manufacturing Inventory Management System archi
 ```mermaid
 graph TB
     subgraph "External Systems"
-        SS[📊 Smartsheet<br/>Master Data Storage]
-        SP[📁 SharePoint<br/>Document Storage]
-        SAP[💼 SAP<br/>ERP System]
+        SS["📊 Smartsheet<br/>Master Data Storage"]
+        SP["📁 SharePoint<br/>Document Storage"]
+        SAP["💼 SAP<br/>ERP System"]
     end
     
     subgraph "Azure Cloud"
         subgraph "Ingestion Layer"
-            WH[🔔 Webhook Receiver]
-            ED[⚙️ Event Dispatcher]
+            WH["🔔 Webhook Receiver"]
+            ED["⚙️ Event Dispatcher"]
         end
         
         subgraph "Business Logic (Azure Functions)"
