@@ -28,12 +28,28 @@ Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory
 
 ### 📚 Reference Documentation
 
-| Document | Description | Audience |
-|----------|-------------|----------|
-| [API Reference](./reference/api_reference.md) | Complete API specification | Developers, Integrators |
-| [Data Dictionary](./reference/data_dictionary.md) | All data models and schemas | Developers, Analysts |
-| [Configuration Reference](./reference/configuration.md) | All configuration options | Developers, Operations |
-| [Error Code Reference](./reference/error_codes.md) | Exception types and handling | Developers, Support |
+#### API Reference (Modular)
+- [API Overview](./reference/api/index.md) - Auth, conventions, error handling
+- [Tag Ingestion](./reference/api/tag-ingestion.md) - Upload tag sheets
+- [LPO Ingestion](./reference/api/lpo-ingestion.md) - Create LPO records
+- [Nesting Parser](./reference/api/nesting-parser.md) - Parse nesting files (v2.0.0)
+- [Material Mapping](./reference/api/material-mapping.md) - Map material codes (v1.6.0)
+- [Scheduling](./reference/api/scheduling.md) - Production scheduling
+- [Event Dispatcher](./reference/api/event-dispatcher.md) - Webhook event router (v1.4.0)
+
+#### Data Dictionary (Modular)
+- [Data Overview](./reference/data/index.md) - Architecture, conventions, ID patterns
+- [Enumerations](./reference/data/enums.md) - All system enums
+- [Data Models](./reference/data/models.md) - Pydantic models
+- [Core & Master Sheets](./reference/data/sheets-core.md) - Config, LPO Master
+- [Production Sheets](./reference/data/sheets-production.md) - Tags, Planning, Nesting
+- [Material Mapping Sheets](./reference/data/sheets-mapping.md) - Mapping system (v1.6.0)
+- [Governance Sheets](./reference/data/sheets-governance.md) - Audit logs, exceptions
+- [Shared Services](./reference/data/services.md) - Business logic modules
+
+#### Configuration & Errors
+- [Configuration Reference](./reference/configuration.md) - All configuration options
+- [Error Code Reference](./reference/error_codes.md) - Exception types and handling
 
 ### 🏗️ Specifications
 
@@ -68,7 +84,7 @@ Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory
 ### 👨‍💻 Developer
 1. Start with → [Quick Start Guide](./quick_start.md)
 2. Understand → [Architecture Overview](./architecture_overview.md)
-3. Reference → [API Reference](./reference/api_reference.md)
+3. Reference → [API Overview](./reference/api/index.md)
 4. Build → [Adding a New Function](./howto/add_function.md)
 
 ### 🔧 DevOps/Operations
@@ -78,7 +94,7 @@ Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory
 
 ### 📊 Business Analyst
 1. Understand → [Architecture Overview](./architecture_overview.md)
-2. Data → [Data Dictionary](./reference/data_dictionary.md)
+2. Data → [Data Dictionary](./reference/data/index.md)
 3. Flows → [Flow Architecture](../Specifications/flow_architecture.md)
 
 ### 🆕 New Team Member
