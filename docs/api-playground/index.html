@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Playground - Ducts Manufacturing</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin: 0 0 0.5rem 0;
+            font-size: 2rem;
+            font-weight: 600;
+        }
+        
+        .header p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .header .version {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .info-banner {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 1rem 2rem;
+            margin: 2rem auto;
+            max-width: 1200px;
+        }
+        
+        .info-banner h3 {
+            margin: 0 0 0.5rem 0;
+            color: #667eea;
+        }
+        
+        .info-banner p {
+            margin: 0.25rem 0;
+            color: #4a5568;
+        }
+        
+        .info-banner a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .info-banner a:hover {
+            text-decoration: underline;
+        }
+        
+        #swagger-ui {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .swagger-ui .topbar {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏭 Ducts Manufacturing API Playground</h1>
+        <p>Interactive API documentation and testing environment</p>
+        <span class="version">v1.6.9</span>
+    </div>
+    
+    <div class="info-banner">
+        <h3>🚀 Getting Started</h3>
+        <p><strong>New to the API?</strong> Start with the <a href="../tutorials/first_api_integration.html">First API Integration Tutorial</a></p>
+        <p><strong>Need details?</strong> Browse the complete <a href="../reference/api/index.html">API Reference Documentation</a></p>
+        <p><strong>Authentication:</strong> Use your Azure Function key in the "Authorize" button below</p>
+    </div>
+    
+    <div id="swagger-ui"></div>
+    
+    <script src="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            const ui = SwaggerUIBundle({
+                url: "./openapi.yaml",
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                defaultModelsExpandDepth: 1,
+                defaultModelExpandDepth: 3,
+                docExpansion: "list",
+                filter: true,
+                showExtensions: true,
+                showCommonExtensions: true,
+                tryItOutEnabled: true
+            });
+            
+            window.ui = ui;
+        };
+    </script>
+</body>
+</html>

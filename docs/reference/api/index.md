@@ -126,26 +126,18 @@ All error responses include:
 
 ## API Endpoints
 
-### Core Ingestion APIs
+## Navigation
 
-| Endpoint | Description | Version |
-|----------|-------------|---------|
-| [LPO Ingestion](./lpo-ingestion.md) | Create LPO records | v1.2.0+ |
-| [Tag Ingestion](./tag-ingestion.md) | Upload tag sheets | v1.0.0+ |
+### Interactive Tools
+- [🎮 API Playground](../../api-playground/index.html) - Try endpoints interactively (Swagger UI)
 
-### Processing APIs
-
-| Endpoint | Description | Version |
-|----------|-------------|---------|
-| [Nesting Parser](./nesting-parser.md) | Parse nesting Excel files | v2.0.0+ |
-| [Material Mapping](./material-mapping.md) | Lookup canonical material codes | v1.6.0+ |
-| [Scheduling](./scheduling.md) | Create production schedules | v1.3.0+ |
-
-### System APIs
-
-| Endpoint | Description | Version |
-|----------|-------------|---------|
-| [Event Dispatcher](./event-dispatcher.md) | Process Smartsheet webhook events | v1.4.0+ |
+### Endpoint Documentation
+- [Tag Ingestion](./tag-ingestion.md) - Upload tag sheets with validation
+- [LPO Ingestion](./lpo-ingestion.md) - Create Local Purchase Orders  
+- [Nesting Parser](./nesting-parser.md) - Parse nesting files and extract BOM (v2.0.0)
+- [Material Mapping](./material-mapping.md) - Lookup material codes (v1.6.0)
+- [Production Scheduling](./scheduling.md) - Schedule tags for production shifts
+- [Event Dispatcher](./event-dispatcher.md) - Webhook event routing (v1.4.0)
 
 ---
 

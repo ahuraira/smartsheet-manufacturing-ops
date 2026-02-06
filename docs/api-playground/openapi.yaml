@@ -1,0 +1,521 @@
+openapi: 3.0.3
+info:
+  title: Ducts Manufacturing Inventory Management API
+  description: |
+    Complete API specification for the Ducts Manufacturing Inventory Management System.
+    
+    ## Features
+    - 🏷️ **Tag Ingestion** - Upload tag sheets with automatic validation
+    - 📦 **LPO Management** - Create and manage Local Purchase Orders
+    - 🔍 **Nesting Parser** - Parse nesting files and extract BOM
+    - 🗺️ **Material Mapping** - Map material descriptions to SAP codes
+    - 📅 **Production Scheduling** - Schedule tags for production shifts
+    - 🔔 **Event Dispatcher** - Webhook-driven automation
+    
+    ## Authentication
+    Azure Functions authentication using function keys or Azure AD.
+    
+  version: 1.6.9
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://your-function-app.azurewebsites.net
+    description: Production
+  - url: https://your-function-app-dev.azurewebsites.net
+    description: Development
+
+tags:
+  - name: Tag Ingestion
+    description: Upload and validate tag sheets
+  - name: LPO Ingestion
+    description: Create Local Purchase Orders
+  - name: Nesting Parser
+    description: Parse nesting files and extract BOM
+  - name: Material Mapping
+    description: Material code lookup and resolution
+  - name: Production Scheduling
+    description: Schedule tags for production
+  - name: Event Dispatcher
+    description: Webhook event routing
+
+paths:
+  /api/tags/ingest:
+    post:
+      tags:
+        - Tag Ingestion
+      summary: Upload a tag sheet
+      description: |
+        Upload a tag sheet with automatic validation, deduplication, and LPO linkage.
+        
+        Features:
+        - Automatic tag ID generation (TAG-YYYYMMDD-NNNN)
+        - File hash deduplication
+        - LPO validation and linkage
+        - Power Automate integration for file uploads
+      operationId: ingestTag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagIngestRequest'
+            examples:
+              standard:
+                summary: Standard tag upload
+                value:
+                  lpo_sap_reference: "PTE-185"
+                  required_area_m2: 150.5
+                  requested_delivery_date: "2026-03-15"
+                  files:
+                    - file_type: "other"
+                      file_content: "base64encodedcontent..."
+                      file_name: "tag_sheet.pdf"
+                  uploaded_by: "john.doe@company.com"
+                  tag_name: "Villa A - Ductwork"
+      responses:
+        '200':
+          description: Tag uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagIngestResponse'
+        '409':
+          description: Duplicate file (already uploaded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DuplicateResponse'
+        '422':
+          description: Validation failed (LPO not found, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/lpo/ingest:
+    post:
+      tags:
+        - LPO Ingestion
+      summary: Create a Local Purchase Order
+      description: |
+        Create a new LPO record with automatic ID generation and SharePoint folder creation.
+      operationId: ingestLPO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LPOIngestRequest'
+      responses:
+        '200':
+          description: LPO created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LPOIngestResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/nesting/parse:
+    post:
+      tags:
+        - Nesting Parser
+      summary: Parse nesting file and extract BOM
+      description: |
+        Parse nesting file (v2.0.0), extract materials, map to SAP codes, and generate BOM.
+        
+        Features:
+        - Multi-format support (CSV, Excel)
+        - Automatic material mapping
+        - Unit conversion
+        - BOM generation
+      operationId: parseNesting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tag_id
+                - file_content
+                - file_name
+              properties:
+                tag_id:
+                  type: string
+                  example: "TAG-20260206-0001"
+                file_content:
+                  type: string
+                  format: byte
+                  description: Base64-encoded nesting file
+                file_name:
+                  type: string
+                  example: "nesting_output.csv"
+      responses:
+        '200':
+          description: Nesting parsed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "SUCCESS"
+                  bom_records:
+                    type: integer
+                    example: 15
+                  trace_id:
+                    type: string
+
+  /api/map/lookup:
+    post:
+      tags:
+        - Material Mapping
+      summary: Lookup material mapping
+      description: |
+        Resolve raw nesting description to canonical material code and SAP code.
+        
+        Precedence: LPO Override > Project Override > Customer Override > Material Master
+      operationId: mapLookup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nesting_description
+              properties:
+                client_request_id:
+                  type: string
+                  format: uuid
+                nesting_description:
+                  type: string
+                  example: "PIR 25mm"
+                lpo_id:
+                  type: string
+                  example: "LPO-100"
+                project_name:
+                  type: string
+                customer_name:
+                  type: string
+      responses:
+        '200':
+          description: Mapping found or exception created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MappingFound'
+                  - $ref: '#/components/schemas/MappingException'
+
+  /api/production/schedule:
+    post:
+      tags:
+        - Production Scheduling
+      summary: Schedule tag for production
+      description: |
+        Schedule a tag for production on a specific machine and shift.
+        
+        Validation:
+        - Tag exists and is PLANNED
+        - Machine is OPERATIONAL
+        - Sufficient PO balance
+        - T-1 deadline calculated (nesting due 18:00 day before)
+      operationId: scheduleProduction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tag_id
+                - machine_id
+                - planned_date
+                - shift
+                - planned_quantity_sqm
+                - scheduled_by
+              properties:
+                client_request_id:
+                  type: string
+                  format: uuid
+                tag_id:
+                  type: string
+                  example: "TAG-0001"
+                machine_id:
+                  type: string
+                  example: "CUT-001"
+                planned_date:
+                  type: string
+                  format: date
+                  example: "2026-01-15"
+                shift:
+                  type: string
+                  enum: [Morning, Evening]
+                planned_quantity_sqm:
+                  type: number
+                  minimum: 0
+                scheduled_by:
+                  type: string
+                  example: "planner@company.com"
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Schedule created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "OK"
+                  schedule_id:
+                    type: string
+                  tag_id:
+                    type: string
+                  next_action_deadline:
+                    type: string
+                    format: date-time
+                    description: T-1 deadline (18:00 day before production)
+
+  /api/events/process-row:
+    post:
+      tags:
+        - Event Dispatcher
+      summary: Process webhook event
+      description: |
+        Central event router for Smartsheet webhook events.
+        
+        Routes events to appropriate handlers based on sheet ID and action.
+      operationId: processRowEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sheet_id
+                - row_id
+                - action
+              properties:
+                sheet_id:
+                  type: integer
+                  format: int64
+                row_id:
+                  type: integer
+                  format: int64
+                action:
+                  type: string
+                  enum: [created, updated, deleted]
+                timestamp:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Event processed (OK, IGNORED, NOT_IMPLEMENTED, or ERROR)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [OK, IGNORED, NOT_IMPLEMENTED, ERROR]
+                  handler:
+                    type: string
+                  trace_id:
+                    type: string
+
+components:
+  schemas:
+    TagIngestRequest:
+      type: object
+      required:
+        - lpo_sap_reference
+        - required_area_m2
+        - requested_delivery_date
+        - files
+        - uploaded_by
+      properties:
+        lpo_sap_reference:
+          type: string
+          example: "PTE-185"
+        required_area_m2:
+          type: number
+          minimum: 0
+          example: 150.5
+        requested_delivery_date:
+          type: string
+          format: date
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileUpload'
+        uploaded_by:
+          type: string
+          format: email
+        tag_name:
+          type: string
+          maxLength: 100
+        remarks:
+          type: string
+
+    FileUpload:
+      type: object
+      required:
+        - file_type
+        - file_content
+        - file_name
+      properties:
+        file_type:
+          type: string
+          enum: [nesting, other]
+        file_content:
+          type: string
+          format: byte
+        file_name:
+          type: string
+
+    TagIngestResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "UPLOADED"
+        tag_id:
+          type: string
+          example: "TAG-20260206-0001"
+        file_hash:
+          type: string
+        trace_id:
+          type: string
+        message:
+          type: string
+
+    LPOIngestRequest:
+      type: object
+      required:
+        - sap_reference
+        - customer_name
+        - project_name
+        - po_quantity
+        - po_date
+        - delivery_date
+      properties:
+        sap_reference:
+          type: string
+          example: "PTE-185"
+        customer_name:
+          type: string
+        project_name:
+          type: string
+        po_quantity:
+          type: number
+        po_date:
+          type: string
+          format: date
+        delivery_date:
+          type: string
+          format: date
+        wastage_allowable:
+          type: number
+          minimum: 0
+          maximum: 100
+        terms_of_payment:
+          type: string
+        hold_reason:
+          type: string
+        remarks:
+          type: string
+
+    LPOIngestResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        lpo_id:
+          type: string
+          example: "LPO-0024"
+        sap_reference:
+          type: string
+        trace_id:
+          type: string
+
+    MappingFound:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "SUCCESS"
+        data:
+          type: object
+          properties:
+            canonical_code:
+              type: string
+              example: "PIR-025"
+            sap_code:
+              type: string
+              example: "MAT-PIR-025"
+            decision:
+              type: string
+              enum: [FOUND, OVERRIDE]
+            mapping_history_id:
+              type: string
+
+    MappingException:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "SUCCESS"
+        data:
+          type: object
+          properties:
+            canonical_code:
+              type: string
+              nullable: true
+            sap_code:
+              type: string
+              nullable: true
+            decision:
+              type: string
+              example: "EXCEPTION"
+            exception_id:
+              type: string
+
+    DuplicateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "DUPLICATE"
+        tag_id:
+          type: string
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "BLOCKED"
+        exception_id:
+          type: string
+        trace_id:
+          type: string
+        message:
+          type: string

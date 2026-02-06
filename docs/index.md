@@ -14,6 +14,7 @@ Welcome to the comprehensive documentation for the Ducts Manufacturing Inventory
 |----------|-------------|------------|
 | [Quick Start Guide](./quick_start.md) | Get up and running in 15 minutes | New developers |
 | [Setup Guide](./setup_guide.md) | Complete development environment setup | All developers |
+| [First API Integration Tutorial](./tutorials/first_api_integration.md) | Step-by-step guide to upload your first tag | New developers |
 | [System Architecture](./system_architecture.md) | Component diagram, data flow, design patterns | All team members |
 | [Architecture Overview](./architecture_overview.md) | System design and component relationships | All team members |
 | [User Journey: Tag Ingestion](./user_journey_test_guide.md) | End-to-end tag upload walkthrough | All team members |
