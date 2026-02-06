@@ -1,3 +1,14 @@
+---
+title: System Architecture
+description: High-level component diagram, data flow, and design patterns
+keywords: [architecture, components, data flow, design patterns, azure]
+category: explanation
+version: 1.6.9
+last_updated: 2026-02-06
+---
+
+[Home](./index.md) > System Architecture
+
 # System Architecture
 
 > **Document Type:** Explanation | **Version:** 1.6.9 | **Last Updated:** 2026-02-06
