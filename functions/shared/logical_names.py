@@ -380,6 +380,32 @@ class Column:
         HISTORY_ID = "HISTORY_ID"
         CREATED_AT = "CREATED_AT"
         TRACE_ID = "TRACE_ID"
+    
+    class ALLOCATION_LOG:
+        """05 Allocation Log columns."""
+        ALLOCATION_ID = "ALLOCATION_ID"
+        TAG_SHEET_ID = "TAG_SHEET_ID"
+        MATERIAL_CODE = "MATERIAL_CODE"
+        QUANTITY = "QUANTITY"
+        PLANNED_DATE = "PLANNED_DATE"
+        SHIFT = "SHIFT"
+        STATUS = "STATUS"
+        STOCK_CHECK_FLAG = "STOCK_CHECK_FLAG"
+        ALLOCATED_AT = "ALLOCATED_AT"
+        RESERVED_UNTIL = "RESERVED_UNTIL"
+        REMARKS = "REMARKS"
+    
+    class CONSUMPTION_LOG:
+        """06 Consumption Log columns."""
+        CONSUMPTION_ID = "CONSUMPTION_ID"
+        TAG_SHEET_ID = "TAG_SHEET_ID"
+        STATUS = "STATUS"
+        CONSUMPTION_DATE = "CONSUMPTION_DATE"
+        SHIFT = "SHIFT"
+        MATERIAL_CODE = "MATERIAL_CODE"
+        QUANTITY = "QUANTITY"
+        REMNANT_ID = "REMNANT_ID"
+        REMARKS = "REMARKS"
 
 
 # Mapping from Sheet logical name to Column class
@@ -389,6 +415,8 @@ SHEET_COLUMNS = {
     Sheet.TAG_REGISTRY: Column.TAG_REGISTRY,
     Sheet.PRODUCTION_PLANNING: Column.PRODUCTION_PLANNING,
     Sheet.NESTING_LOG: Column.NESTING_LOG,
+    Sheet.ALLOCATION_LOG: Column.ALLOCATION_LOG,
+    Sheet.CONSUMPTION_LOG: Column.CONSUMPTION_LOG,
     Sheet.EXCEPTION_LOG: Column.EXCEPTION_LOG,
     Sheet.USER_ACTION_LOG: Column.USER_ACTION_LOG,
     Sheet.MATERIAL_MASTER: Column.MATERIAL_MASTER,

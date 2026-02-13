@@ -230,6 +230,44 @@ from .event_utils import (
     get_cell_value_by_logical_name,
 )
 
+# Flow helper models (v1.7.0 - Teams adaptive cards)
+from .flow_models import (
+    # Enums
+    SubmissionStatus,
+    WarningCode,
+    ErrorCode,
+    # Request models
+    ConsumptionSubmission,
+    StockSubmission,
+    SubmissionConfirmRequest,
+    AllocationAggregateRequest,
+    ExceptionCreateRequest,
+    # Response models
+    SubmissionResult,
+    SubmissionStatusResponse,
+    PendingItemsResponse,
+    AllocationAggregateResponse,
+    StockSnapshotResponse,
+    AllocationDetailResponse,
+    ExceptionCreateResponse,
+    # Sub-models
+    ConsumptionLine,
+    StockLine,
+    Warning,
+    Error,
+    AggregatedMaterial,
+    AllocationSummary,
+    StockSnapshotLine,
+)
+
+# Queue-based distributed locking (v1.7.0)
+from .queue_lock import (
+    acquire_allocation_lock,
+    release_allocation_lock,
+    AllocationLock,
+    LockHandle,
+)
+
 __all__ = [
     # Sheet config (legacy - use logical_names for new code)
     "SheetName",
