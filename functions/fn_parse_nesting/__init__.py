@@ -402,6 +402,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 record=record,
                 nest_session_id=nest_session_id,
                 lpo_id=lpo_id,
+                brand=brand,
                 trace_id=trace_id
             )
             
@@ -414,8 +415,54 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             # BOM processing failure should not fail the entire parse
             logger.error(f"BOM processing failed: {bom_err}", extra={"trace_id": trace_id})
             warnings.append({"code": "BOM_FAILED", "message": str(bom_err)})
-            
-        # 7f. Log User Action
+
+        # 7f. Allocate Materials (soft reservation)
+        alloc_result = None
+        if bom_result and bom_result.success:
+            try:
+                from shared.allocation_engine import allocate_for_session
+
+                # Extract shift from production planning row
+                alloc_shift = "Morning"  # Default
+                try:
+                    from shared.manifest import get_manifest as get_mfst
+                    mfst = get_mfst()
+                    col_shift = mfst.get_column_name(
+                        Sheet.PRODUCTION_PLANNING,
+                        Column.PRODUCTION_PLANNING.SHIFT
+                    )
+                    # Re-read the planning row to get shift
+                    planning_rows = client.find_rows(
+                        sheet_ref=Sheet.PRODUCTION_PLANNING,
+                        column_ref=Column.PRODUCTION_PLANNING.TAG_SHEET_ID,
+                        value=tag_id
+                    )
+                    if planning_rows:
+                        shift_val = planning_rows[0].get(col_shift, "Morning")
+                        if shift_val:
+                            alloc_shift = str(shift_val)
+                except Exception as shift_err:
+                    logger.debug(f"Could not extract shift, defaulting to Morning: {shift_err}")
+
+                alloc_result = allocate_for_session(
+                    client=client,
+                    nest_session_id=nest_session_id,
+                    tag_id=tag_id,
+                    planned_date=planned_date,
+                    shift=alloc_shift,
+                    trace_id=trace_id,
+                    client_request_id=client_request_id,
+                )
+                logger.info(
+                    f"Allocation result: {alloc_result.status}, "
+                    f"{len(alloc_result.allocation_ids)} allocations",
+                    extra={"trace_id": trace_id}
+                )
+            except Exception as alloc_err:
+                logger.error(f"Allocation failed: {alloc_err}", extra={"trace_id": trace_id})
+                warnings.append({"code": "ALLOCATION_FAILED", "message": str(alloc_err)})
+
+        # 7g. Log User Action
         log_user_action(
             client=client,
             action_type=ActionType.TAG_UPDATED,
@@ -453,6 +500,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "exception_lines": bom_result.exception_lines,
                 "success": bom_result.success
             }
+
+        if alloc_result:
+            response_data["allocation"] = alloc_result.to_dict()
         
         # v1.6.7: Add enrichment data for Power Automate
         response_data["enrichment"] = {

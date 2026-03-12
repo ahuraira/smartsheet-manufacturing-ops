@@ -37,6 +37,7 @@ from shared import (
     SubmissionStatus,
     SubmissionStatusResponse,
 )
+from shared.allocation_service import _parse_rows
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         consumption_col_status = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.STATUS)
         consumption_col_date = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.CONSUMPTION_DATE)
         
-        all_consumptions = client.list_rows(Sheet.CONSUMPTION_LOG)
+        all_consumptions = _parse_rows(client.get_sheet(Sheet.CONSUMPTION_LOG))
         
         # Find submission
         submission_row = None

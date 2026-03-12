@@ -257,7 +257,10 @@ from .flow_models import (
     Error,
     AggregatedMaterial,
     AllocationSummary,
+    AllocationDetail,
+    ConsumptionCardLine,
     StockSnapshotLine,
+    TagChoice,
 )
 
 # Queue-based distributed locking (v1.7.0)

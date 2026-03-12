@@ -10,14 +10,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         body = req.get_json()
         submission = StockSubmission(**body)
         if submission.trace_id: trace_id = submission.trace_id
-        logger.info(f"[{trace_id}] Stock submission {submission.submission_id} for plant {submission.plant}")
+        logger.info(f"[{trace_id}] Stock submission for plant {submission.plant}")
         
         # Simplified: Write stock counts to INVENTORY_SNAPSHOT (user will enhance)
         client = get_smartsheet_client()
         
         result = SubmissionResult(
-            status="OK",
-            processed_submission_id=submission.submission_id,
             warnings=[],
             errors=[],
             trace_id=trace_id

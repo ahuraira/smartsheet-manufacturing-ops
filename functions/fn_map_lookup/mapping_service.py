@@ -5,9 +5,12 @@ Mapping Service Core Logic
 Provides deterministic material mapping from nesting descriptions to canonical codes.
 
 Lookup Order (Precedence):
-1. Check Mapping Override (LPO > PROJECT > CUSTOMER > PLANT)
-2. Exact match in Material Master
-3. If no match → create exception
+1. Check idempotency (Mapping History)
+2. Exact match in Material Master (05a) → canonical_code + default_sap_code
+3. Override check (05b) by scope: LPO > BRAND > PROJECT > CUSTOMER
+4. Resolve SAP code (override or default)
+5. Look up SAP Material Catalog (05c) for UOM + conversion factor
+6. If no match → create exception
 
 All lookups are immutably logged to Mapping History.
 """
@@ -42,12 +45,24 @@ class MappingResult:
 
 @dataclass
 class MaterialMasterEntry:
-    """Cached entry from Material Master."""
+    """Cached entry from Material Master (05a) — identity + default SAP code."""
     
     row_id: int
     nesting_description: str
     canonical_code: str
     default_sap_code: Optional[str] = None
+    not_tracked: bool = False
+    active: bool = True
+
+
+@dataclass
+class CatalogEntry:
+    """Cached entry from SAP Material Catalog (05c) — conversion factors."""
+    
+    row_id: int
+    sap_code: str
+    canonical_code: str
+    nesting_description: str = ""
     uom: Optional[str] = None
     sap_uom: Optional[str] = None
     conversion_factor: Optional[float] = None
@@ -64,7 +79,7 @@ class MappingService:
     
     Usage:
         service = MappingService(smartsheet_client)
-        result = service.lookup("aluminum tape", lpo_id="LPO-555", trace_id="abc123")
+        result = service.lookup("aluminum tape", brand="WTI", lpo_id="LPO-555", trace_id="abc123")
     """
     
     _instance: Optional["MappingService"] = None
@@ -93,11 +108,19 @@ class MappingService:
             return
         
         self._client = smartsheet_client
+        
+        # 05a Material Master cache: normalized_description → MaterialMasterEntry
         self._material_master_cache: Dict[str, MaterialMasterEntry] = {}
         self._cache_timestamp: Optional[datetime] = None
-        # FIX: Add override cache to prevent N+1 API calls (v1.6.4)
+        
+        # 05c SAP Catalog cache: sap_code → CatalogEntry
+        self._catalog_cache: Dict[str, CatalogEntry] = {}
+        self._catalog_cache_timestamp: Optional[datetime] = None
+        
+        # 05b Override cache
         self._override_cache: List[Dict] = []
         self._override_cache_timestamp: Optional[datetime] = None
+        
         self._cache_lock = threading.Lock()
         self._initialized = True
         
@@ -106,6 +129,7 @@ class MappingService:
     def lookup(
         self,
         nesting_description: str,
+        brand: Optional[str] = None,
         lpo_id: Optional[str] = None,
         project_id: Optional[str] = None,
         customer_id: Optional[str] = None,
@@ -116,12 +140,16 @@ class MappingService:
         Look up canonical mapping for a nesting description.
         
         Lookup order:
-        1. Override table (by scope precedence)
-        2. Material Master exact match
-        3. Create exception if no match
+        1. Idempotency check (Mapping History)
+        2. Material Master (05a) → canonical_code + default_sap_code
+        3. Override table (05b) by scope: LPO > BRAND > PROJECT > CUSTOMER
+        4. Resolve SAP code → override wins, else default from 05a
+        5. SAP Material Catalog (05c) → UOM + conversion factor
+        6. No match in 05a → create exception
         
         Args:
             nesting_description: Raw description from nesting file
+            brand: Brand name (e.g., "WTI", "KIMMCO") for override lookup
             lpo_id: Optional LPO ID for override lookup
             project_id: Optional project ID for override lookup
             customer_id: Optional customer ID for override lookup
@@ -129,7 +157,7 @@ class MappingService:
             trace_id: Trace ID for distributed tracing
             
         Returns:
-            MappingResult with canonical code and SAP code
+            MappingResult with canonical code, SAP code, and conversion factors
         """
         trace_id = trace_id or str(uuid4())
         ingest_line_id = ingest_line_id or str(uuid4())
@@ -151,50 +179,71 @@ class MappingService:
         result = MappingResult()
         
         try:
-            # Step 1: Check overrides (if scope context provided)
-            if lpo_id or project_id or customer_id:
-                override_result = self._check_overrides(
-                    normalized, lpo_id, project_id, customer_id
-                )
-                if override_result:
-                    result.success = True
-                    result.decision = "OVERRIDE"
-                    result.canonical_code = override_result.get("canonical_code")
-                    result.sap_code = override_result.get("sap_code")
-                    result.history_id = self._log_history(
-                        ingest_line_id, normalized, result, trace_id
-                    )
-                    return result
-            
-            # Step 2: Check Material Master
+            # ── Step 1: Material Master (05a) → identity + default ──────
             entry = self._lookup_material_master(normalized)
-            if entry:
-                result.success = True
-                result.decision = "AUTO"
-                result.canonical_code = entry.canonical_code
-                result.sap_code = entry.default_sap_code
-                result.uom = entry.uom
-                result.sap_uom = entry.sap_uom
-                result.conversion_factor = entry.conversion_factor
-                result.not_tracked = entry.not_tracked
+            if not entry:
+                # No match in Material Master → exception
+                result.decision = "REVIEW"
+                result.error = f"No mapping found for: {normalized}"
+                result.exception_id = self._create_exception(
+                    ingest_line_id, nesting_description, trace_id
+                )
                 result.history_id = self._log_history(
                     ingest_line_id, normalized, result, trace_id
                 )
+                
+                logger.warning(
+                    f"[{trace_id}] No mapping for '{normalized}', "
+                    f"exception created: {result.exception_id}"
+                )
                 return result
             
-            # Step 3: No match - create exception
-            result.decision = "REVIEW"
-            result.error = f"No mapping found for: {normalized}"
-            result.exception_id = self._create_exception(
-                ingest_line_id, nesting_description, trace_id
-            )
+            # We have identity
+            result.success = True
+            result.canonical_code = entry.canonical_code
+            result.not_tracked = entry.not_tracked
+            resolved_sap_code = entry.default_sap_code
+            result.decision = "AUTO"
+            
+            # ── Step 2: Override (05b) → check for brand/LPO override ──
+            if brand or lpo_id or project_id or customer_id:
+                override_result = self._check_overrides(
+                    normalized, brand, lpo_id, project_id, customer_id
+                )
+                if override_result:
+                    resolved_sap_code = override_result.get("sap_code") or resolved_sap_code
+                    # Override may also provide a different canonical code
+                    if override_result.get("canonical_code"):
+                        result.canonical_code = override_result["canonical_code"]
+                    result.decision = "OVERRIDE"
+                    logger.info(
+                        f"[{trace_id}] Override applied: SAP code = {resolved_sap_code}"
+                    )
+            
+            result.sap_code = resolved_sap_code
+            
+            # ── Step 3: SAP Catalog (05c) → conversion factors ─────────
+            if resolved_sap_code:
+                catalog_entry = self._lookup_catalog(resolved_sap_code)
+                if catalog_entry:
+                    result.uom = catalog_entry.uom
+                    result.sap_uom = catalog_entry.sap_uom
+                    result.conversion_factor = catalog_entry.conversion_factor
+                    if catalog_entry.not_tracked:
+                        result.not_tracked = True
+                    logger.debug(
+                        f"[{trace_id}] Catalog hit for SAP {resolved_sap_code}: "
+                        f"uom={catalog_entry.uom}, factor={catalog_entry.conversion_factor}"
+                    )
+                else:
+                    logger.warning(
+                        f"[{trace_id}] SAP code {resolved_sap_code} not found in "
+                        f"SAP Material Catalog (05c)"
+                    )
+            
+            # ── Step 4: Log history ────────────────────────────────────
             result.history_id = self._log_history(
                 ingest_line_id, normalized, result, trace_id
-            )
-            
-            logger.warning(
-                f"[{trace_id}] No mapping for '{normalized}', "
-                f"exception created: {result.exception_id}"
             )
             
         except Exception as e:
@@ -226,6 +275,8 @@ class MappingService:
         normalized = re.sub(r'[^\w\s\-]', '', normalized)
         
         return normalized
+    
+    # ── Material Master (05a) cache ─────────────────────────────────────
     
     def _lookup_material_master(
         self, 
@@ -285,23 +336,11 @@ class MappingService:
                 not_tracked_val = str(cells.get(col_ids.get("NOT_TRACKED"), "No")).lower()
                 not_tracked = not_tracked_val in ["yes", "true", "1"]
                 
-                # Parse conversion factor
-                conv_factor = None
-                conv_factor_val = cells.get(col_ids.get("CONVERSION_FACTOR"))
-                if conv_factor_val:
-                    try:
-                        conv_factor = float(conv_factor_val)
-                    except (ValueError, TypeError):
-                        pass
-                
                 entry = MaterialMasterEntry(
                     row_id=row["id"],
                     nesting_description=normalized,
                     canonical_code=str(cells.get(col_ids["CANONICAL_CODE"], "")),
                     default_sap_code=cells.get(col_ids.get("DEFAULT_SAP_CODE")),
-                    uom=cells.get(col_ids.get("UOM")),
-                    sap_uom=cells.get(col_ids.get("SAP_UOM")),
-                    conversion_factor=conv_factor,
                     not_tracked=not_tracked,
                     active=True,
                 )
@@ -325,9 +364,106 @@ class MappingService:
         manifest = get_manifest()
         return manifest.get_all_column_ids("MATERIAL_MASTER")
     
+    # ── SAP Material Catalog (05c) cache ────────────────────────────────
+    
+    def _lookup_catalog(self, sap_code: str) -> Optional[CatalogEntry]:
+        """
+        Look up SAP code in SAP Material Catalog cache.
+        
+        Returns conversion factor and UOM details for the given SAP code.
+        """
+        self._ensure_catalog_cache_fresh()
+        
+        with self._cache_lock:
+            return self._catalog_cache.get(str(sap_code))
+    
+    def _ensure_catalog_cache_fresh(self) -> None:
+        """Refresh SAP Catalog cache if stale."""
+        now = datetime.utcnow()
+        
+        if self._catalog_cache_timestamp:
+            age = (now - self._catalog_cache_timestamp).total_seconds()
+            if age < self.CACHE_TTL_SECONDS:
+                return
+        
+        self._refresh_catalog_cache()
+    
+    def _refresh_catalog_cache(self) -> None:
+        """Reload SAP Material Catalog from Smartsheet."""
+        logger.info("Refreshing SAP Material Catalog cache...")
+        
+        try:
+            from shared.logical_names import Sheet
+            
+            rows = self._client.get_all_rows(Sheet.SAP_MATERIAL_CATALOG)
+            col_ids = self._get_catalog_column_ids()
+            
+            new_cache: Dict[str, CatalogEntry] = {}
+            
+            for row in rows:
+                cells = {c.get("columnId"): c.get("value") for c in row.get("cells", [])}
+                
+                sap_code = cells.get(col_ids.get("SAP_CODE"))
+                if not sap_code:
+                    continue
+                
+                sap_code = str(sap_code)
+                
+                # Check if active
+                active_val = str(cells.get(col_ids.get("ACTIVE"), "Yes")).lower()
+                if active_val in ["no", "false", "0"]:
+                    continue
+                
+                # Parse not_tracked
+                not_tracked_val = str(cells.get(col_ids.get("NOT_TRACKED"), "No")).lower()
+                not_tracked = not_tracked_val in ["yes", "true", "1"]
+                
+                # Parse conversion factor
+                conv_factor = None
+                conv_factor_val = cells.get(col_ids.get("CONVERSION_FACTOR"))
+                if conv_factor_val:
+                    try:
+                        conv_factor = float(conv_factor_val)
+                    except (ValueError, TypeError):
+                        pass
+                
+                entry = CatalogEntry(
+                    row_id=row["id"],
+                    sap_code=sap_code,
+                    canonical_code=str(cells.get(col_ids.get("CANONICAL_CODE"), "")),
+                    nesting_description=str(cells.get(col_ids.get("NESTING_DESCRIPTION"), "")),
+                    uom=cells.get(col_ids.get("UOM")),
+                    sap_uom=cells.get(col_ids.get("SAP_UOM")),
+                    conversion_factor=conv_factor,
+                    not_tracked=not_tracked,
+                    active=True,
+                )
+                
+                new_cache[sap_code] = entry
+            
+            with self._cache_lock:
+                self._catalog_cache = new_cache
+                self._catalog_cache_timestamp = datetime.utcnow()
+            
+            logger.info(f"SAP Material Catalog cache refreshed: {len(new_cache)} entries")
+            
+        except Exception as e:
+            logger.exception(f"Error refreshing SAP Material Catalog cache: {e}")
+            raise
+    
+    def _get_catalog_column_ids(self) -> Dict[str, int]:
+        """Get column IDs for SAP Material Catalog from manifest."""
+        from shared.manifest import get_manifest
+        
+        manifest = get_manifest()
+        return manifest.get_all_column_ids("05C_SAP_MATERIAL_CATALOG")
+    
+    # ── Override (05b) cache ────────────────────────────────────────────
+    
     def _check_overrides(
         self,
         normalized_description: str,
+        brand: Optional[str],
         lpo_id: Optional[str],
         project_id: Optional[str],
         customer_id: Optional[str],
@@ -335,7 +471,7 @@ class MappingService:
         """
         Check override table with scope precedence.
         
-        Precedence: LPO > PROJECT > CUSTOMER > PLANT
+        Precedence: LPO > BRAND > PROJECT > CUSTOMER
         """
         from shared.logical_names import Sheet
         
@@ -343,6 +479,8 @@ class MappingService:
         scope_checks = []
         if lpo_id:
             scope_checks.append(("LPO", lpo_id))
+        if brand:
+            scope_checks.append(("BRAND", brand))
         if project_id:
             scope_checks.append(("PROJECT", project_id))
         if customer_id:
@@ -352,7 +490,7 @@ class MappingService:
             return None
         
         try:
-            # FIX: Use cached override data to prevent N+1 API calls (v1.6.4)
+            # Use cached override data to prevent N+1 API calls
             rows = self._get_override_cache()
             col_ids = self._get_override_column_ids()
             
@@ -372,7 +510,7 @@ class MappingService:
                     if active_val in ["no", "false", "0"]:
                         continue
                     
-                    # Check effective dates (v1.6.4 fix)
+                    # Check effective dates
                     now_date = datetime.now().date()
                     
                     eff_from_str = str(cells.get(col_ids.get("EFFECTIVE_FROM"), "")).split("T")[0]
@@ -384,7 +522,7 @@ class MappingService:
                             if now_date < eff_from:
                                 continue
                         except ValueError:
-                            pass # Ignore invalid dates
+                            pass  # Ignore invalid dates
                             
                     if eff_to_str:
                         try:
@@ -444,6 +582,8 @@ class MappingService:
         manifest = get_manifest()
         return manifest.get_all_column_ids("MAPPING_OVERRIDE")
     
+    # ── History + Exception logging ─────────────────────────────────────
+    
     def _check_existing_history(self, ingest_line_id: str, trace_id: str) -> Optional[MappingResult]:
         """
         Check if an entry already exists for this ingest line.
@@ -452,8 +592,6 @@ class MappingService:
         from shared.logical_names import Sheet, Column
         
         try:
-            # Look up in Mapping History by Ingest Line ID
-            # Note: We use the logical column name passed to find_row
             row = self._client.find_row(
                 Sheet.MAPPING_HISTORY, 
                 Column.MAPPING_HISTORY.INGEST_LINE_ID, 
@@ -461,16 +599,11 @@ class MappingService:
             )
             
             if row:
-                # Row found - reconstruct result
-                # Keys in 'row' are Physical Column Names (Titles)
-                # We assume standard naming: "Canonical Code", "SAP Code", "Decision"
-                
-                # Try to map common titles
                 canonical = row.get("Canonical Code") or row.get("CanonicalCode") or ""
                 sap = row.get("SAP Code") or row.get("SAPCode") or ""
                 decision = row.get("Decision") or "AUTO"
                 
-                # SOTA: Try to retrieve conversion context if available (columns must exist in History)
+                # Try to retrieve conversion context if available
                 uom = row.get("Canonical UOM") or row.get("UOM")
                 factor = None
                 factor_val = row.get("Conversion Factor")
@@ -527,7 +660,7 @@ class MappingService:
                 col_ids["CREATED_AT"]: datetime.utcnow().isoformat(),
                 col_ids["NOTES"]: result.error or "",
                 
-                # SOTA: Persist conversion context if columns exist
+                # Persist conversion context if columns exist
                 col_ids.get("UOM"): result.uom,
                 col_ids.get("CONVERSION_FACTOR"): result.conversion_factor,
             }
@@ -587,22 +720,33 @@ class MappingService:
         manifest = get_manifest()
         return manifest.get_all_column_ids("MAPPING_EXCEPTION")
     
+    # ── Cache management ────────────────────────────────────────────────
+    
     def invalidate_cache(self) -> None:
         """Force cache refresh on next lookup."""
         with self._cache_lock:
             self._cache_timestamp = None
-        logger.info("Material Master cache invalidated")
+            self._catalog_cache_timestamp = None
+            self._override_cache_timestamp = None
+        logger.info("All mapping caches invalidated")
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics for monitoring."""
         with self._cache_lock:
-            age = None
+            master_age = None
             if self._cache_timestamp:
-                age = (datetime.utcnow() - self._cache_timestamp).total_seconds()
+                master_age = (datetime.utcnow() - self._cache_timestamp).total_seconds()
+            
+            catalog_age = None
+            if self._catalog_cache_timestamp:
+                catalog_age = (datetime.utcnow() - self._catalog_cache_timestamp).total_seconds()
             
             return {
-                "entries": len(self._material_master_cache),
-                "cache_age_seconds": age,
+                "material_master_entries": len(self._material_master_cache),
+                "catalog_entries": len(self._catalog_cache),
+                "override_entries": len(self._override_cache),
+                "master_cache_age_seconds": master_age,
+                "catalog_cache_age_seconds": catalog_age,
                 "ttl_seconds": self.CACHE_TTL_SECONDS,
-                "is_stale": age is None or age >= self.CACHE_TTL_SECONDS,
+                "is_stale": master_age is None or master_age >= self.CACHE_TTL_SECONDS,
             }

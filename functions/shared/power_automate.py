@@ -79,7 +79,7 @@ class FlowTriggerResult:
             "response_status": self.response_status,
             "error_message": self.error_message,
             "retry_count": self.retry_count,
-            "elapsed_ms": round(self.elapsed_ms, 2)
+            "elapsed_ms": float(f"{self.elapsed_ms:.2f}")
         }
 
 
@@ -202,7 +202,8 @@ class FlowClient:
         Returns:
             FlowTriggerResult with success/failure info
         """
-        if not self.config.create_folders_url:
+        url = self.config.create_folders_url
+        if not url:
             logger.warning(
                 f"[{correlation_id}] POWER_AUTOMATE_CREATE_FOLDERS_URL not configured - skipping flow trigger"
             )
@@ -224,7 +225,7 @@ class FlowClient:
         
         return self._trigger_flow(
             flow_type=FlowType.CREATE_LPO_FOLDERS,
-            url=self.config.create_folders_url,
+            url=url,
             payload=payload,
             correlation_id=correlation_id
         )
@@ -270,7 +271,7 @@ class FlowClient:
             if response.status_code in (200, 201, 202):
                 logger.info(
                     f"[{correlation_id}] Flow {flow_type.value} triggered successfully "
-                    f"(status={response.status_code}, elapsed={elapsed_ms:.0f}ms)"
+                    f"(status={response.status_code}, elapsed={elapsed_ms:.0f}ms, url={url[:30]}...)"
                 )
                 return FlowTriggerResult(
                     success=True,
@@ -446,7 +447,8 @@ def trigger_nesting_complete_flow(
     """
     client = get_flow_client()
     
-    if not client.config.nesting_complete_url:
+    url = client.config.nesting_complete_url
+    if not url:
         logger.warning(
             f"[{correlation_id}] POWER_AUTOMATE_NESTING_COMPLETE_URL not configured - skipping flow trigger"
         )
@@ -474,7 +476,7 @@ def trigger_nesting_complete_flow(
     
     return client._trigger_flow(
         flow_type=FlowType.NESTING_COMPLETE,
-        url=client.config.nesting_complete_url,
+        url=url,
         payload=payload,
         correlation_id=correlation_id
     )
@@ -500,7 +502,8 @@ def trigger_upload_files_flow(
     """
     client = get_flow_client()
     
-    if not client.config.upload_files_url:
+    url = client.config.upload_files_url
+    if not url:
         logger.warning(
             f"[{correlation_id}] POWER_AUTOMATE_UPLOAD_FILES_URL not configured - skipping upload trigger"
         )
@@ -527,7 +530,7 @@ def trigger_upload_files_flow(
     
     return client._trigger_flow(
         flow_type=FlowType.UPLOAD_FILES,
-        url=client.config.upload_files_url,
+        url=url,
         payload=payload,
         correlation_id=correlation_id
     )

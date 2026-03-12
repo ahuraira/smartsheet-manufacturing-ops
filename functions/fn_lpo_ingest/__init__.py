@@ -168,7 +168,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
-        logger.info(f"[{trace_id}] Processing LPO ingest: SAP={request.sap_reference}")
+        logger.info(f"[{trace_id}] Processing LPO ingest: SAP={request.sap_reference}, Wastage={request.wastage_pct}")
         
         # Get client
         client = get_smartsheet_client()
@@ -359,7 +359,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             Column.LPO_MASTER.PROJECT_NAME: request.project_name,
             Column.LPO_MASTER.BRAND: request.brand,
             Column.LPO_MASTER.LPO_STATUS: LPOStatus.DRAFT.value,
-            Column.LPO_MASTER.WASTAGE_CONSIDERED_IN_COSTING: str(request.wastage_pct),
+            Column.LPO_MASTER.WASTAGE_CONSIDERED_IN_COSTING: request.wastage_pct,
             Column.LPO_MASTER.PRICE_PER_SQM: request.price_per_sqm,
             Column.LPO_MASTER.PO_QUANTITY_SQM: request.po_quantity_sqm,
             Column.LPO_MASTER.PO_VALUE: po_value,
@@ -385,17 +385,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logger.info(f"[{trace_id}] LPO created: {request.sap_reference}, row_id: {row_id}")
         
         # Attach files to the row
-        attached_count = 0
+        attached_count: int = 0
         if row_id and all_files:
             for f in all_files:
                 try:
                     file_name = f.file_name or f"{f.file_type.value}_file"
                     if f.file_url:
                         client.attach_url_to_row(Sheet.LPO_MASTER, row_id, f.file_url, file_name)
-                        attached_count += 1
+                        attached_count = attached_count + 1  # type: ignore
                     elif f.file_content:
                         client.attach_file_to_row(Sheet.LPO_MASTER, row_id, f.file_content, file_name)
-                        attached_count += 1
+                        attached_count = attached_count + 1  # type: ignore
                 except Exception as attach_err:
                     logger.error(f"[{trace_id}] Failed to attach file {file_name}: {attach_err}")
             logger.info(f"[{trace_id}] Attached {attached_count}/{len(all_files)} files")

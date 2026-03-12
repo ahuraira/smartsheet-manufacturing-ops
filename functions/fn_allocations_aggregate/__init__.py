@@ -1,40 +1,59 @@
 """
-fn_allocations_aggregate: Aggregate Materials Across Allocations
-=================================================================
+fn_allocations_aggregate: Get Allocation Details for a Tag Sheet
+================================================================
 
-Aggregates material requirements across selected allocations to prepare
-for consumption submission.
+Returns rich allocation details for a tag sheet, and builds a pre-filled
+consumption card payload for use in Power Automate adaptive cards.
 
 Endpoint: POST /api/allocations/aggregate
 
-Request:
+Primary request (Power Automate flow):
 {
-  "allocation_ids": ["A-123", "A-124"],
+  "tag_id": "TAG-001",
+  "trace_id": "..."
+}
+
+Backward-compat request (explicit allocation IDs):
+{
+  "allocation_ids": ["ALLOC-20260311-ABC123"],
   "trace_id": "..."
 }
 
 Response:
 {
   "trace_id": "...",
-  "allocations": [
-    {"allocation_id": "A-123", "tag_id": "TAG-1001"},
-    {"allocation_id": "A-124", "tag_id": "TAG-1002"}
-  ],
-  "aggregated_materials": [
+  "tag_id": "TAG-001",
+  "allocation_details": [
     {
-      "canonical_code": "MAT-001",
-      "allocated_qty": 100.0,
-      "already_consumed": 10.0,
-      "remaining_qty": 90.0,
-      "uom": "SQM"
+      "allocation_id": "ALLOC-20260311-ABC123",
+      "sap_code": "10003456",
+      "nesting_description": "Aluminium Tape 50mm",
+      "sap_qty": 4.0,
+      "sap_uom": "ROL",
+      "raw_qty": 100.0,
+      "raw_uom": "m",
+      "already_consumed": 0.0,
+      "remaining_qty": 4.0,
+      "stock_check_flag": "Green",
+      "planned_date": "2026-03-11",
+      "shift": "Morning"
     }
-  ]
+  ],
+  "consumption_card_lines": [
+    {
+      "allocation_id": "ALLOC-20260311-ABC123",
+      "sap_code": "10003456",
+      "nesting_description": "Aluminium Tape 50mm",
+      "sap_uom": "ROL",
+      "raw_uom": "m",
+      "allocated_raw_qty": 100.0,
+      "default_actual_raw_qty": 100.0,
+      "allocated_sap_qty": 4.0,
+      "default_actual_sap_qty": 4.0
+    }
+  ],
+  "total_materials": 1
 }
-
-SOTA Patterns:
-- Return allocation metadata for confirmation
-- Calculate already consumed to prevent over-consumption
-- Return empty arrays if no data (not error)
 """
 
 import logging
@@ -51,7 +70,12 @@ from shared import (
     AllocationAggregateRequest,
     AllocationAggregateResponse,
 )
-from shared.allocation_service import aggregate_materials
+from shared.allocation_service import (
+    get_allocation_details_by_tag,
+    build_consumption_card_lines,
+    aggregate_materials,
+)
+from shared.card_builder import build_consumption_card
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +83,9 @@ logger = logging.getLogger(__name__)
 def main(req: func.HttpRequest) -> func.HttpResponse:
     """POST /api/allocations/aggregate"""
     trace_id = generate_trace_id()
-    
+
     try:
-        # 1. Parse request body
+        # ── 1. Parse request ────────────────────────────────────────
         try:
             body = req.get_json()
         except ValueError:
@@ -73,8 +97,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=400,
                 mimetype="application/json"
             )
-        
-        # 2. Validate with Pydantic
+
+        # ── 2. Validate with Pydantic ───────────────────────────────
         try:
             request = AllocationAggregateRequest(**body)
         except Exception as e:
@@ -86,66 +110,93 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=400,
                 mimetype="application/json"
             )
-        
+
         if request.trace_id:
             trace_id = request.trace_id
-        
-        allocation_ids = request.allocation_ids or []
-        
-        if not allocation_ids:
+
+        if not request.tag_id and not request.allocation_ids:
             return func.HttpResponse(
                 json.dumps({
-                    "error": {"code": "INVALID_PAYLOAD", "message": "No allocation_ids provided"},
+                    "error": {
+                        "code": "INVALID_PAYLOAD",
+                        "message": "Either tag_id or allocation_ids must be provided"
+                    },
                     "trace_id": trace_id
                 }),
                 status_code=400,
                 mimetype="application/json"
             )
-        
-        logger.info(f"[{trace_id}] Aggregating {len(allocation_ids)} allocations")
-        
-        # 3. Get Smartsheet client
+
+        # ── 3. Get Smartsheet client ────────────────────────────────
         client = get_smartsheet_client()
-        
-        # 4. Aggregate materials
-        aggregated = aggregate_materials(client, allocation_ids, trace_id)
-        
-        # 5. Build allocation metadata
-        from shared import Sheet, Column
-        from shared.manifest import get_manifest
-        manifest = get_manifest()
-        
-        col_alloc_id = manifest.get_column_name(Sheet.ALLOCATION_LOG, Column.ALLOCATION_LOG.ALLOCATION_ID)
-        col_tag_id = manifest.get_column_name(Sheet.ALLOCATION_LOG, Column.ALLOCATION_LOG.TAG_SHEET_ID)
-        
-        all_allocations = client.list_rows(Sheet.ALLOCATION_LOG)
-        
-        allocations_metadata = []
-        for alloc in all_allocations:
-            alloc_id = alloc.get(col_alloc_id)
-            if alloc_id in allocation_ids:
-                allocations_metadata.append({
-                    "allocation_id": alloc_id,
-                    "tag_id": alloc.get(col_tag_id, "")
-                })
-        
-        # 6. Build response
+
+        # ── 4. Dispatch: tag_id (primary) or allocation_ids (compat) ─
+        if request.tag_id:
+            # Primary path: Power Automate sends tag_id from pending-items card
+            tag_id = request.tag_id
+            logger.info(f"[{trace_id}] Fetching allocation details for tag {tag_id}")
+
+            details = get_allocation_details_by_tag(client, tag_id, trace_id)
+            card_lines = build_consumption_card_lines(details)
+
+        else:
+            # Backward-compat path: explicit allocation_ids provided
+            allocation_ids = request.allocation_ids or []
+            logger.info(f"[{trace_id}] Aggregating {len(allocation_ids)} explicit allocation IDs")
+
+            # Re-derive tag_id from the first allocation row if possible
+            tag_id = None
+            aggregated = aggregate_materials(client, allocation_ids, trace_id)
+
+            # Build AllocationDetail shell from AggregatedMaterial for response parity
+            from shared.flow_models import AllocationDetail, ConsumptionCardLine
+            details = [
+                AllocationDetail(
+                    allocation_id="",
+                    sap_code=m.canonical_code,
+                    nesting_description=m.canonical_code,  # No description in compat mode
+                    sap_qty=m.allocated_qty,
+                    sap_uom=m.uom,
+                    raw_qty=m.allocated_qty,
+                    raw_uom=m.uom,
+                    already_consumed=m.already_consumed,
+                    remaining_qty=m.remaining_qty,
+                    stock_check_flag="",
+                    planned_date="",
+                    shift="",
+                )
+                for m in aggregated
+            ]
+            card_lines = build_consumption_card_lines(details)
+
+        # ── 5. Build adaptive card and return response ───────────────
+        consumption_card = build_consumption_card(
+            tag_id=request.tag_id or "",
+            card_lines=card_lines,
+        )
+
         response = AllocationAggregateResponse(
             trace_id=trace_id,
-            allocations=allocations_metadata,
-            aggregated_materials=aggregated
+            tag_id=request.tag_id,
+            allocation_details=details,
+            consumption_card_lines=card_lines,
+            consumption_card=consumption_card,
+            total_materials=len(details),
         )
-        
-        logger.info(f"[{trace_id}] Returning {len(aggregated)} aggregated materials")
-        
+
+        logger.info(
+            f"[{trace_id}] Returning {len(details)} allocation details "
+            f"with {len(card_lines)} card lines for tag {request.tag_id}"
+        )
+
         return func.HttpResponse(
             response.model_dump_json(),
             status_code=200,
             mimetype="application/json"
         )
-        
+
     except Exception as e:
-        logger.exception(f"[{trace_id}] Error aggregating allocations: {e}")
+        logger.exception(f"[{trace_id}] Error in fn_allocations_aggregate: {e}")
         return func.HttpResponse(
             json.dumps({
                 "error": {"code": "SERVER_ERROR", "message": str(e)},

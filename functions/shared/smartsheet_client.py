@@ -677,7 +677,8 @@ class SmartsheetClient:
             if col_name in resolved_row_data:
                 cells.append({
                     "columnId": col["id"],
-                    "value": resolved_row_data[col_name]
+                    "value": resolved_row_data[col_name],
+                    "strict": False
                 })
         
         url = f"{self.base_url}/sheets/{sheet_id}/rows"
@@ -733,7 +734,8 @@ class SmartsheetClient:
             if col_name in resolved_updates:
                 cells.append({
                     "columnId": col["id"],
-                    "value": resolved_updates[col_name]
+                    "value": resolved_updates[col_name],
+                    "strict": False
                 })
         
         url = f"{self.base_url}/sheets/{sheet_id}/rows"

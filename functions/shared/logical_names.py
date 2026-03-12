@@ -72,7 +72,7 @@ class Sheet:
     # 05. Material Mapping
     MATERIAL_MASTER = "MATERIAL_MASTER"
     MAPPING_OVERRIDE = "MAPPING_OVERRIDE"
-    LPO_MATERIAL_BRAND_MAP = "LPO_MATERIAL_BRAND_MAP"
+    SAP_MATERIAL_CATALOG = "05C_SAP_MATERIAL_CATALOG"
     MAPPING_HISTORY = "MAPPING_HISTORY"
     MAPPING_EXCEPTION = "MAPPING_EXCEPTION"
     PARSED_BOM = "PARSED_BOM"
@@ -329,15 +329,20 @@ class Column:
         CREATED_BY = "CREATED_BY"
         CREATED_AT = "CREATED_AT"
     
-    class LPO_MATERIAL_BRAND_MAP:
-        """05c LPO Material Brand Map columns."""
+    class SAP_MATERIAL_CATALOG:
+        """05c SAP Material Catalog columns."""
         MAP_ID = "MAP_ID"
-        LPO_ID = "LPO_ID"
+        NESTING_DESCRIPTION = "NESTING_DESCRIPTION"
         CANONICAL_CODE = "CANONICAL_CODE"
         SAP_CODE = "SAP_CODE"
-        PRIORITY = "PRIORITY"
+        UOM = "UOM"
+        SAP_UOM = "SAP_UOM"
+        CONVERSION_FACTOR = "CONVERSION_FACTOR"
+        NOT_TRACKED = "NOT_TRACKED"
         ACTIVE = "ACTIVE"
         NOTES = "NOTES"
+        UPDATED_AT = "UPDATED_AT"
+        UPDATED_BY = "UPDATED_BY"
     
     class MAPPING_HISTORY:
         """05d Mapping History columns."""
@@ -387,6 +392,7 @@ class Column:
         TAG_SHEET_ID = "TAG_SHEET_ID"
         MATERIAL_CODE = "MATERIAL_CODE"
         QUANTITY = "QUANTITY"
+        UOM = "UOM"                          # SAP UOM (e.g. ROL) — for system/inventory
         PLANNED_DATE = "PLANNED_DATE"
         SHIFT = "SHIFT"
         STATUS = "STATUS"
@@ -394,6 +400,10 @@ class Column:
         ALLOCATED_AT = "ALLOCATED_AT"
         RESERVED_UNTIL = "RESERVED_UNTIL"
         REMARKS = "REMARKS"
+        NEST_SESSION_ID = "NEST_SESSION_ID"  # Traceability link to nesting session
+        NESTING_DESCRIPTION = "NESTING_DESCRIPTION"  # Human-readable material name
+        RAW_QUANTITY = "RAW_QUANTITY"        # Physical quantity (e.g. 100) — for production team
+        RAW_UOM = "RAW_UOM"                  # Physical UOM (e.g. m) — for production team
     
     class CONSUMPTION_LOG:
         """06 Consumption Log columns."""
@@ -405,7 +415,22 @@ class Column:
         MATERIAL_CODE = "MATERIAL_CODE"
         QUANTITY = "QUANTITY"
         REMNANT_ID = "REMNANT_ID"
+        ALLOCATION_ID = "ALLOCATION_ID"      # Links consumption back to specific allocation row
+        CONSUMPTION_TYPE = "CONSUMPTION_TYPE"
         REMARKS = "REMARKS"
+    
+    class INVENTORY_TXN_LOG:
+        """90 Inventory Transaction Log columns."""
+        TXN_ID = "TXN_ID"
+        TXN_DATE = "TXN_DATE"
+        TXN_TYPE = "TXN_TYPE"  # Receipt, Allocation, Issue, Consumption, Pick, Adjustment, DO Issue, Remnant Create, Remnant Return
+        MATERIAL_CODE = "MATERIAL_CODE"
+        QUANTITY = "QUANTITY"
+        REFERENCE_DOC = "REFERENCE_DOC"
+        SOURCE_SYSTEM = "SOURCE_SYSTEM"  # Smartsheet, AzureFunc, SAP, Manual
+        CREATED_BY = "CREATED_BY"
+        TRACE_ID = "TRACE_ID"
+        CLIENT_REQUEST_ID = "CLIENT_REQUEST_ID"
 
 
 # Mapping from Sheet logical name to Column class
@@ -421,9 +446,10 @@ SHEET_COLUMNS = {
     Sheet.USER_ACTION_LOG: Column.USER_ACTION_LOG,
     Sheet.MATERIAL_MASTER: Column.MATERIAL_MASTER,
     Sheet.MAPPING_OVERRIDE: Column.MAPPING_OVERRIDE,
-    Sheet.LPO_MATERIAL_BRAND_MAP: Column.LPO_MATERIAL_BRAND_MAP,
+    Sheet.SAP_MATERIAL_CATALOG: Column.SAP_MATERIAL_CATALOG,
     Sheet.MAPPING_HISTORY: Column.MAPPING_HISTORY,
     Sheet.MAPPING_EXCEPTION: Column.MAPPING_EXCEPTION,
     Sheet.PARSED_BOM: Column.PARSED_BOM,
+    Sheet.INVENTORY_TXN_LOG: Column.INVENTORY_TXN_LOG,
 }
 

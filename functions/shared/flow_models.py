@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
 from enum import Enum
+from .models import ExceptionSeverity
 
 
 # =====================
@@ -57,6 +58,7 @@ class ConsumptionLine(BaseModel):
     canonical_code: str = Field(..., min_length=1, max_length=50)
     allocated_qty: float = Field(..., ge=0)
     actual_qty: float = Field(..., ge=0)
+    accessories_qty: float = Field(default=0.0, ge=0)
     uom: str = Field(..., min_length=1, max_length=10)
     remarks: Optional[str] = Field(None, max_length=500)
 
@@ -109,6 +111,12 @@ class StockSnapshotLine(BaseModel):
     last_count: Optional[str] = None  # ISO date
 
 
+class TagChoice(BaseModel):
+    """A single choice for a Power Automate adaptive card Input.ChoiceSet."""
+    title: str  # Display label shown to the operator
+    value: str  # Value submitted back to the flow
+
+
 # =====================
 # Request Models
 # =====================
@@ -118,8 +126,8 @@ class ConsumptionSubmission(BaseModel):
     Consumption submission request.
     
     Sent from Power Automate when user submits consumption from Teams card.
+    trace_id serves as the idempotency key.
     """
-    submission_id: str = Field(..., description="Client-provided idempotency key (GUID)")
     user: str = Field(..., description="User email or ID")
     plant: str = Field(..., min_length=1, max_length=50)
     shift: str = Field(..., min_length=1, max_length=50)
@@ -129,13 +137,27 @@ class ConsumptionSubmission(BaseModel):
     source: str = Field(default="TEAMS", max_length=50)
 
 
+class ConsumptionSubmissionFromCard(BaseModel):
+    """
+    Consumption submission directly from the adaptive card response.
+    Eliminates the need for Power Automate to loop and map values.
+    trace_id serves as the idempotency key.
+    """
+    user: str = Field(..., description="User email or ID")
+    plant: str = Field(..., min_length=1, max_length=50)
+    shift: str = Field(..., min_length=1, max_length=50)
+    card_data: Dict[str, Any] = Field(..., description="Raw Adaptive Card Data")
+    trace_id: Optional[str] = None
+    source: str = Field(default="TEAMS", max_length=50)
+
+
 class StockSubmission(BaseModel):
     """
     Stock count submission request.
     
     Sent from Power Automate when user submits stock count from Teams card.
+    trace_id serves as the idempotency key.
     """
-    submission_id: str = Field(..., description="Client-provided idempotency key (GUID)")
     user: str = Field(..., description="User email or ID")
     plant: str = Field(..., min_length=1, max_length=50)
     shift: str = Field(..., min_length=1, max_length=50)
@@ -155,9 +177,9 @@ class SubmissionConfirmRequest(BaseModel):
 
 
 class AllocationAggregateRequest(BaseModel):
-    """Request to aggregate materials across allocations."""
-    allocation_ids: Optional[List[str]] = None
-    tag_ids: Optional[List[str]] = None
+    """Request to aggregate materials for a tag sheet."""
+    tag_id: Optional[str] = Field(None, description="Tag Sheet ID — primary input from Power Automate")
+    allocation_ids: Optional[List[str]] = Field(None, description="Explicit allocation IDs (backward compat)")
     trace_id: Optional[str] = None
 
 
@@ -177,11 +199,9 @@ class ExceptionCreateRequest(BaseModel):
 
 class SubmissionResult(BaseModel):
     """Result of submission (consumption or stock)."""
-    status: Literal["OK", "WARN", "ERROR"]
-    processed_submission_id: str
+    trace_id: str
     warnings: List[Warning] = Field(default_factory=list)
     errors: List[Error] = Field(default_factory=list)
-    trace_id: str
 
 
 class SubmissionStatusResponse(BaseModel):
@@ -199,13 +219,49 @@ class PendingItemsResponse(BaseModel):
     timestamp: str  # ISO datetime
     pending_tags: List[AllocationSummary]
     allow_stock_submission: bool = True
+    tag_choices: List[TagChoice] = Field(
+        default_factory=list,
+        description="Deduplicated tag IDs as title/value pairs for an adaptive card Input.ChoiceSet"
+    )
+
+
+class AllocationDetail(BaseModel):
+    """Rich detail for a single allocation row — used to build the consumption card."""
+    allocation_id: str
+    sap_code: str                  # MATERIAL_CODE from ALLOCATION_LOG (SAP code)
+    nesting_description: str       # Human-readable name for the operator
+    sap_qty: float                 # SAP quantity (system units, e.g. 4 ROL)
+    sap_uom: str                   # SAP UOM (e.g. ROL)
+    raw_qty: float                 # Raw physical quantity (e.g. 100)
+    raw_uom: str                   # Raw UOM (e.g. m)
+    already_consumed: float        # From CONSUMPTION_LOG for this allocation
+    remaining_qty: float           # sap_qty − already_consumed
+    stock_check_flag: str          # Green / Yellow / Red
+    planned_date: str
+    shift: str
+
+
+class ConsumptionCardLine(BaseModel):
+    """Pre-filled line for a Power Automate adaptive card consumption form."""
+    allocation_id: str
+    sap_code: str                  # Read-only label
+    nesting_description: str       # Read-only label shown to operator
+    sap_uom: str                   # Read-only label
+    raw_uom: str                   # Read-only label
+    allocated_raw_qty: float       # Read-only — what was originally allocated (raw units)
+    default_actual_raw_qty: float  # Editable default = remaining raw qty (raw units)
+    allocated_sap_qty: float       # Read-only — what was originally allocated (SAP units)
+    default_actual_sap_qty: float  # Editable default = remaining SAP qty
 
 
 class AllocationAggregateResponse(BaseModel):
     """Response for allocation aggregation."""
     trace_id: str
-    allocations: List[Dict[str, str]]  # [{"allocation_id": "A-123", "tag_id": "TAG-1001"}]
-    aggregated_materials: List[AggregatedMaterial]
+    tag_id: Optional[str] = None
+    allocation_details: List[AllocationDetail]
+    consumption_card_lines: List[ConsumptionCardLine]
+    consumption_card: Dict[str, Any]  # Ready-to-post adaptive card JSON for Teams
+    total_materials: int
 
 
 class StockSnapshotResponse(BaseModel):
@@ -232,4 +288,4 @@ class ExceptionCreateResponse(BaseModel):
 
 
 # Import existing enums for compatibility
-from .models import ExceptionSeverity  # noqa: E402, F811
+# from .models import ExceptionSeverity  # Moved to top

@@ -8,7 +8,7 @@ Endpoint: POST /api/submission/consumption
 
 Request:
 {
-  "submission_id": "GUID",
+  "trace_id": "GUID",
   "user": "user@company.com",
   "plant": "PLANT-A",
   "shift": "Morning",
@@ -35,7 +35,7 @@ Response:
 
 CRITICAL:
 - Distributed locking to prevent race conditions
-- Idempotency via submission_id
+- Idempotency via trace_id
 - Variance validation with configurable thresholds
 """
 
@@ -75,8 +75,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
+        # 2. Get Smartsheet client early (needed for card parsing)
+        client = get_smartsheet_client()
+        
         try:
-            submission = ConsumptionSubmission(**body)
+            if "card_data" in body:
+                from shared.flow_models import ConsumptionSubmissionFromCard
+                from shared.consumption_service import parse_card_data_to_submission
+                
+                raw_sub = ConsumptionSubmissionFromCard(**body)
+                submission = parse_card_data_to_submission(client, raw_sub, trace_id)
+            else:
+                submission = ConsumptionSubmission(**body)
         except Exception as e:
             logger.error(f"[{trace_id}] Validation error: {e}")
             return func.HttpResponse(
@@ -92,22 +102,20 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             trace_id = submission.trace_id
         
         logger.info(
-            f"[{trace_id}] Consumption submission: {submission.submission_id} "
-            f"by {submission.user} for {len(submission.allocation_ids)} allocations"
+            f"[{trace_id}] Consumption submission by {submission.user} "
+            f"for {len(submission.allocation_ids)} allocations"
         )
-        
-        # 2. Get Smartsheet client
-        client = get_smartsheet_client()
         
         # 3. Submit consumption (handles locking, validation, writes)
         result = submit_consumption(client, submission, trace_id)
         
         # 4. Map to HTTP status code
         status_code = 200
-        if result.status == "ERROR":
+        if result.errors:
             status_code = 400  # Validation errors
         
-        logger.info(f"[{trace_id}] Submission result: {result.status}")
+        status_log = "ERROR" if result.errors else ("WARN" if result.warnings else "OK")
+        logger.info(f"[{trace_id}] Submission result: {status_log}")
         
         return func.HttpResponse(
             result.model_dump_json(),

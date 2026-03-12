@@ -42,6 +42,7 @@ from shared import (
     generate_trace_id,
     SubmissionConfirmRequest,
 )
+from shared.allocation_service import _parse_rows
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         col_status = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.STATUS)
         col_remarks = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.REMARKS)
         
-        all_consumptions = client.list_rows(Sheet.CONSUMPTION_LOG)
+        all_consumptions = _parse_rows(client.get_sheet(Sheet.CONSUMPTION_LOG))
         
         submission_rows = []
         for cons in all_consumptions:

@@ -44,6 +44,7 @@ from shared import (
     StockSnapshotLine,
     StockSnapshotResponse,
 )
+from shared.allocation_service import _parse_rows
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
         
         # Get all rows (filter by plant if column exists)
-        all_inventory = client.list_rows(Sheet.INVENTORY_SNAPSHOT)
+        all_inventory = _parse_rows(client.get_sheet(Sheet.INVENTORY_SNAPSHOT))
         
         # Build snapshot lines
         # For now, return all rows (plant filtering TBD based on actual column structure)

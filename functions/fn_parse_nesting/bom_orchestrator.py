@@ -67,6 +67,7 @@ class BOMOrchestrator:
         nest_session_id: str,
         lpo_id: Optional[str] = None,
         project_id: Optional[str] = None,
+        brand: Optional[str] = None,
         trace_id: Optional[str] = None,
         write_to_sheet: bool = True,
     ) -> BOMProcessingResult:
@@ -78,6 +79,7 @@ class BOMOrchestrator:
             nest_session_id: Unique ID for this nesting session
             lpo_id: Optional LPO ID for override lookup
             project_id: Optional project ID for override lookup
+            brand: Optional brand name for SAP code resolution (e.g., "WTI", "KIMMCO")
             trace_id: Optional trace ID for distributed tracing
             write_to_sheet: If True, write BOM lines to Parsed BOM sheet
             
@@ -105,7 +107,7 @@ class BOMOrchestrator:
                 return result
             
             # Step 2: Map each line
-            mapped_lines = self._map_lines(bom_lines, lpo_id, project_id, trace_id)
+            mapped_lines = self._map_lines(bom_lines, lpo_id, project_id, brand, trace_id)
             result.bom_lines = mapped_lines
             
             # Count mapping results
@@ -150,6 +152,7 @@ class BOMOrchestrator:
         lines: List[BOMLine],
         lpo_id: Optional[str],
         project_id: Optional[str],
+        brand: Optional[str],
         trace_id: str
     ) -> List[BOMLine]:
         """Map each BOM line to canonical codes."""
@@ -159,6 +162,7 @@ class BOMOrchestrator:
             try:
                 result = service.lookup(
                     nesting_description=line.nesting_description,
+                    brand=brand,
                     lpo_id=lpo_id,
                     project_id=project_id,
                     ingest_line_id=line.line_id,
@@ -171,16 +175,16 @@ class BOMOrchestrator:
                 line.history_id = result.history_id
                 
                 # Apply conversion using UnitService
-                if result.uom:
+                if result.sap_uom and result.conversion_factor:
                     from shared.unit_service import UnitService
                     
                     line.canonical_quantity = UnitService.convert(
                         quantity=line.quantity, 
                         from_uom=line.uom, 
-                        to_uom=result.uom, 
+                        to_uom=result.sap_uom, 
                         conversion_factor=result.conversion_factor
                     )
-                    line.canonical_uom = result.uom
+                    line.canonical_uom = result.sap_uom
                 
             except Exception as e:
                 logger.warning(
@@ -243,6 +247,7 @@ def process_bom_from_record(
     nest_session_id: str,
     lpo_id: Optional[str] = None,
     project_id: Optional[str] = None,
+    brand: Optional[str] = None,
     trace_id: Optional[str] = None,
 ) -> BOMProcessingResult:
     """
@@ -256,6 +261,7 @@ def process_bom_from_record(
         nest_session_id: Unique nesting session ID
         lpo_id: Optional LPO ID for brand resolution
         project_id: Optional project ID
+        brand: Optional brand name (e.g., "WTI", "KIMMCO")
         trace_id: Optional trace ID
         
     Returns:
@@ -267,6 +273,7 @@ def process_bom_from_record(
         nest_session_id=nest_session_id,
         lpo_id=lpo_id,
         project_id=project_id,
+        brand=brand,
         trace_id=trace_id,
         write_to_sheet=True
     )
