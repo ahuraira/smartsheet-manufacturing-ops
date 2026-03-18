@@ -361,7 +361,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         # 7. Create schedule record
         schedule_id = generate_next_schedule_id(client)
-        now = format_datetime_for_smartsheet(datetime.now())
+        now = format_datetime_for_smartsheet(datetime.utcnow())
         
         schedule_data = {
             Column.PRODUCTION_PLANNING.SCHEDULE_ID: schedule_id,

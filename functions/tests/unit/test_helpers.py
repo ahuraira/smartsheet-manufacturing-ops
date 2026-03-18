@@ -237,10 +237,10 @@ class TestCalculateSlaDue:
     
     @pytest.mark.unit
     def test_default_created_at_now(self):
-        """Test that created_at defaults to now."""
-        before = datetime.now()
+        """Test that created_at defaults to utcnow."""
+        before = datetime.utcnow()
         due = calculate_sla_due(ExceptionSeverity.CRITICAL)
-        after = datetime.now()
+        after = datetime.utcnow()
         
         # Due should be ~4 hours from now
         expected_min = before + timedelta(hours=4)

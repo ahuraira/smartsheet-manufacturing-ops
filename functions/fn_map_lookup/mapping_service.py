@@ -425,7 +425,8 @@ class MappingService:
                     try:
                         conv_factor = float(conv_factor_val)
                     except (ValueError, TypeError):
-                        pass
+                        logger.warning(f"Invalid conversion_factor '{conv_factor_val}' for SAP code {sap_code}, treating as None")
+                        conv_factor = None
                 
                 entry = CatalogEntry(
                     row_id=row["id"],
@@ -510,8 +511,8 @@ class MappingService:
                     if active_val in ["no", "false", "0"]:
                         continue
                     
-                    # Check effective dates
-                    now_date = datetime.now().date()
+                    # Check effective dates (use UTC to match cache timestamps)
+                    now_date = datetime.utcnow().date()
                     
                     eff_from_str = str(cells.get(col_ids.get("EFFECTIVE_FROM"), "")).split("T")[0]
                     eff_to_str = str(cells.get(col_ids.get("EFFECTIVE_TO"), "")).split("T")[0]
@@ -568,8 +569,10 @@ class MappingService:
             logger.info(f"Override cache refreshed: {len(self._override_cache)} entries")
         except Exception as e:
             logger.warning(f"Error refreshing override cache: {e}")
-            # Return stale cache if available
+            # Serve stale cache if available, but reset timestamp to avoid
+            # hammering the API on every subsequent call
             if self._override_cache:
+                self._override_cache_timestamp = now
                 return self._override_cache
             self._override_cache = []
         
@@ -599,11 +602,12 @@ class MappingService:
             )
             
             if row:
+                # COMPAT: Multiple aliases handle pre-manifest history rows with varying column names
                 canonical = row.get("Canonical Code") or row.get("CanonicalCode") or ""
                 sap = row.get("SAP Code") or row.get("SAPCode") or ""
                 decision = row.get("Decision") or "AUTO"
-                
-                # Try to retrieve conversion context if available
+
+                # COMPAT: Try both column name variants for conversion context
                 uom = row.get("Canonical UOM") or row.get("UOM")
                 factor = None
                 factor_val = row.get("Conversion Factor")

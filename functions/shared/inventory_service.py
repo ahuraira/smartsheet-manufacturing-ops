@@ -103,12 +103,7 @@ def log_inventory_transactions_batch(
         sheet_id = manifest.get_sheet_id(Sheet.INVENTORY_TXN_LOG)
         
         # Build column name to ID map
-        columns_meta = manifest.get_sheet_columns(Sheet.INVENTORY_TXN_LOG)
-        col_name_to_id = {}
-        if isinstance(columns_meta, list):
-            for col in columns_meta:
-                if isinstance(col, dict) and "title" in col and "id" in col:
-                    col_name_to_id[col["title"]] = col["id"]
+        col_name_to_id = manifest.get_all_column_ids(Sheet.INVENTORY_TXN_LOG)
         
         smartsheet_payload = []
         for row in rows_to_add:

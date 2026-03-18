@@ -100,6 +100,19 @@ Records of nesting file parsing sessions.
 
 ---
 
+## Inventory Snapshot
+
+Point-in-time inventory snapshot. Defined as `Column.INVENTORY_SNAPSHOT` in `logical_names.py`.
+
+| Logical Name | Physical Column | Type | Description |
+|--------------|-----------------|------|-------------|
+| `MATERIAL_CODE` | Material Code | Text | Material identifier |
+| `SYSTEM_CLOSING` | System Closing | Number | System closing balance |
+| `UOM` | UOM | Text | Unit of measure |
+| `LAST_COUNT_DATE` | Last Count Date | Date | Date of last physical count |
+
+---
+
 ## Related Documentation
 
 - [Tag Ingestion API](../api/tag-ingestion.md) - Create tag records

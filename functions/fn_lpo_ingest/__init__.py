@@ -344,7 +344,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         )
         
         # 7. Create LPO record
-        now = format_datetime_for_smartsheet(datetime.now())
+        now = format_datetime_for_smartsheet(datetime.utcnow())
         po_value = request.po_quantity_sqm * request.price_per_sqm
         
         # v1.6.8: Generate LPO ID and resolve email

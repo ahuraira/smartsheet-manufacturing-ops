@@ -60,6 +60,9 @@ class ConsumptionLine(BaseModel):
     actual_qty: float = Field(..., ge=0)
     accessories_qty: float = Field(default=0.0, ge=0)
     uom: str = Field(..., min_length=1, max_length=10)
+    raw_qty: float = Field(default=0.0, ge=0)
+    accessories_raw_qty: float = Field(default=0.0, ge=0)
+    raw_uom: str = Field(default="", max_length=10)
     remarks: Optional[str] = Field(None, max_length=500)
 
 
@@ -200,6 +203,7 @@ class ExceptionCreateRequest(BaseModel):
 class SubmissionResult(BaseModel):
     """Result of submission (consumption or stock)."""
     trace_id: str
+    processed_submission_id: Optional[str] = None
     warnings: List[Warning] = Field(default_factory=list)
     errors: List[Error] = Field(default_factory=list)
 

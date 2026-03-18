@@ -44,6 +44,7 @@ from shared import (
     StockSnapshotLine,
     StockSnapshotResponse,
 )
+from shared.helpers import parse_float_safe
 from shared.allocation_service import _parse_rows
 
 logger = logging.getLogger(__name__)
@@ -82,8 +83,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Check if INVENTORY_SNAPSHOT exists in manifest
         try:
             sheet_id = manifest.get_sheet_id(Sheet.INVENTORY_SNAPSHOT)
-        except:
-            logger.warning(f"[{trace_id}] INVENTORY_SNAPSHOT sheet not found in manifest")
+        except Exception as e:
+            logger.warning(f"[{trace_id}] INVENTORY_SNAPSHOT sheet not found in manifest: {e}")
             # Return empty snapshot
             response = StockSnapshotResponse(
                 trace_id=trace_id,
@@ -100,17 +101,22 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Get all rows (filter by plant if column exists)
         all_inventory = _parse_rows(client.get_sheet(Sheet.INVENTORY_SNAPSHOT))
         
-        # Build snapshot lines
-        # For now, return all rows (plant filtering TBD based on actual column structure)
+        # Build snapshot lines using manifest-based column lookups
+        col_code = manifest.get_column_name(Sheet.INVENTORY_SNAPSHOT, Column.INVENTORY_SNAPSHOT.MATERIAL_CODE)
+        col_sys_qty = manifest.get_column_name(Sheet.INVENTORY_SNAPSHOT, Column.INVENTORY_SNAPSHOT.SYSTEM_CLOSING)
+        col_uom = manifest.get_column_name(Sheet.INVENTORY_SNAPSHOT, Column.INVENTORY_SNAPSHOT.UOM)
+        col_last_count = manifest.get_column_name(Sheet.INVENTORY_SNAPSHOT, Column.INVENTORY_SNAPSHOT.LAST_COUNT_DATE)
+
         lines = []
-        
+
         for row in all_inventory[:100]:  # Limit to 100 materials
-            # Try to extract canonical_code and qty
-            # This is a placeholder - adjust based on actual manifest
-            canonical_code = row.get("Material Code", "UNKNOWN")
-            system_qty = float(row.get("System Closing", 0) or 0)
-            uom = row.get("UOM", "SQM")
-            last_count = row.get("Last Count Date", None)
+            canonical_code = row.get(col_code, "UNKNOWN")
+            try:
+                system_qty = parse_float_safe(row.get(col_sys_qty), default=0.0)
+            except (ValueError, TypeError):
+                system_qty = 0.0
+            uom = row.get(col_uom, "SQM")
+            last_count = row.get(col_last_count, None)
             
             lines.append(StockSnapshotLine(
                 canonical_code=canonical_code,
@@ -137,6 +143,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
     except Exception as e:
         logger.exception(f"[{trace_id}] Error fetching stock snapshot: {e}")
+        try:
+            from shared.audit import create_exception
+            from shared.models import ReasonCode, ExceptionSeverity, ExceptionSource
+            create_exception(
+                client=client,
+                trace_id=trace_id,
+                reason_code=ReasonCode.SYSTEM_ERROR,
+                severity=ExceptionSeverity.CRITICAL,
+                source=ExceptionSource.ALLOCATION,
+                message=f"fn_stock_snapshot unhandled error: {str(e)}",
+            )
+        except Exception:
+            logger.error(f"[{trace_id}] Failed to create exception record")
         return func.HttpResponse(
             json.dumps({
                 "error": {"code": "SERVER_ERROR", "message": str(e)},

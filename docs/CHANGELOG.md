@@ -9,11 +9,289 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### `fn_pending_items` — Adaptive Card `tag_choices` field (`GET /api/pending-items`)
+- **`TagChoice` model** added to `shared/flow_models.py` — Pydantic model with `title` and `value` string fields, matching the `Input.ChoiceSet` choice schema expected by Power Automate adaptive cards.
+- **`tag_choices: List[TagChoice]`** field added to `PendingItemsResponse` — a deduplicated, ordered list of unique tag IDs derived from `pending_tags`. Built with a `seen_tags` set so each tag ID appears exactly once even if it has multiple allocations.
+- **`TagChoice` exported** from `shared/__init__.py`.
+
+**Why:** Power Automate previously had to extract tag IDs from `pending_tags`, deduplicate them, and reshape them into `title`/`value` pairs before building the adaptive card `Input.ChoiceSet`. `tag_choices` provides this ready-to-use, eliminating all post-processing in the flow.
+
+**Example response addition:**
+```json
+"tag_choices": [
+  { "title": "TAG-1001", "value": "TAG-1001" },
+  { "title": "TAG-1002", "value": "TAG-1002" }
+]
+```
+
+#### `MARGIN_APPROVAL_LOG` Sheet Definition (`shared/logical_names.py`)
+- **`Sheet.MARGIN_APPROVAL_LOG`** added to `Sheet` class
+- **`Column.MARGIN_APPROVAL_LOG`** class added with 13 columns: `APPROVAL_ID`, `TAG_SHEET_ID`, `LPO_ID`, `MATERIAL_COST_AED`, `OTHER_COSTS_AED`, `GM_EXC_TAX_PCT`, `CORP_TAX_AED`, `TARGET_MARGIN_VARIANCE_PCT`, `STATUS`, `CLIENT_REQUEST_ID`, `CARD_JSON`, `CREATED_AT`
+- Added to `SHEET_COLUMNS` mapping
+
+**Why:** `margin_orchestrator.py` referenced `Sheet.MARGIN_APPROVAL_LOG` but it was never defined, causing `AttributeError` at runtime.
+
+#### `INVENTORY_SNAPSHOT` Column Definition (`shared/logical_names.py`)
+- **`Column.INVENTORY_SNAPSHOT`** class added with columns: `MATERIAL_CODE`, `SYSTEM_CLOSING`, `UOM`, `LAST_COUNT_DATE`
+
+**Why:** `fn_stock_snapshot` was using hardcoded column name strings instead of manifest-based lookups.
+
+#### `processed_submission_id` field (`shared/flow_models.py`)
+- **`processed_submission_id: Optional[str]`** added to `SubmissionResult` model — allows clients to track submission ID for polling status.
+
+#### Exception Logging in Endpoint Catch Blocks
+- All v1.7.0+ endpoint functions now create `EXCEPTION_LOG` records via `create_exception()` in their outermost `except Exception` blocks: `fn_pending_items`, `fn_submission_status`, `fn_stock_snapshot`, `fn_allocations_aggregate`, `fn_submit_consumption`, `fn_confirm_submission`, `fn_submit_stock`.
+
+**Why:** Previously, unhandled errors were logged to stdout only and never reached the Exception Log sheet.
+
+#### Distributed Lock + Audit Logging in `fn_confirm_submission`
+- Wrapped the read-update section in `AllocationLock` keyed on `processed_submission_id` to prevent concurrent approve/reject races.
+- Added `log_user_action()` call for each approval/rejection status change.
+
+**Why:** Two simultaneous approve/reject requests could race on the same submission rows. Approvals were not tracked in the User Action Log.
+
+### Changed
+
+#### Queue Lock Default Timeout (`shared/queue_lock.py`)
+- Default timeout increased from **30s → 60s** to accommodate slow Smartsheet API calls.
+- Added `is_likely_held()` method to `LockHandle` for callers to check if lock is still valid before critical writes.
+- Added expiry warning in `release_allocation_lock()` when elapsed time exceeds timeout.
+- Added docstring warning to `AllocationLock` about visibility timeout limitations and lack of automatic renewal.
+
+#### Margin Orchestrator — Enum-Based Column References (`shared/margin_orchestrator.py`)
+- Replaced all hardcoded string column names (e.g., `"APPROVAL_ID"`) with `Column.MARGIN_APPROVAL_LOG.*` enum references.
+- Cached `get_all_column_ids()` result in a local variable instead of calling it 10 times.
+
 ### Planned
 - `fn_allocate` - Inventory allocation function
 - `fn_pick_confirm` - Pick confirmation function
-- `fn_submit_consumption` - Consumption submission function
 - `fn_create_do` - Delivery order creation function
+
+### Fixed
+- Fixed `wastage_pct` datatype mismatch (sending as float instead of string) in LPO ingestion.
+- Fixed `AttributeError` in `fn_ingest_tag` by ensuring `requested_delivery_date` is accessed as a dictionary key.
+
+#### CRITICAL: Variance Calculation Used User-Submitted Allocation Qty (`shared/consumption_service.py`)
+- **Before:** Variance check used `line.allocated_qty` from user's submission — user could bypass variance checks by submitting inflated qty.
+- **After:** Uses `material_info.allocated_qty` from system allocation records (via `aggregate_materials()`).
+
+#### CRITICAL: `fn_stock_snapshot` Hardcoded Column Names
+- **Before:** Used `"Material Code"`, `"System Closing"`, `"UOM"`, `"Last Count Date"` string literals.
+- **After:** Uses `manifest.get_column_name(Sheet.INVENTORY_SNAPSHOT, Column.INVENTORY_SNAPSHOT.*)`.
+
+#### Allocation Already-Consumed Validation (`shared/consumption_service.py`)
+- Added validation rejecting consumption against allocations with status `"Consumed"` — returns `ALREADY_SUBMITTED` error.
+
+#### Non-Deterministic Tag Selection (`shared/consumption_service.py`)
+- Changed `list(tag_ids)[0]` → `sorted(tag_ids)[0]` for deterministic behavior across runs.
+
+#### Silent Skip on Unmapped Materials (`shared/consumption_service.py`)
+- Added `logger.warning()` when a consumption line's material cannot be mapped to an allocation ID.
+
+#### Margin Orchestrator Failure Now Creates Exception Record (`shared/consumption_service.py`)
+- When `trigger_margin_approval_for_tag()` fails, now creates an `EXCEPTION_LOG` record instead of only logging to stdout.
+
+#### BOM Conversion Factor Zero Handling (`fn_parse_nesting/bom_orchestrator.py`)
+- Changed `if result.conversion_factor:` → `if result.conversion_factor is not None:` — `0.0` is falsy in Python and was silently skipping conversion.
+- Added warning log for zero conversion factors.
+
+#### Mapping Service Timezone Inconsistency (`fn_map_lookup/mapping_service.py`)
+- Fixed override effective date validation: `datetime.now().date()` → `datetime.utcnow().date()` to match cache timestamps.
+
+#### Mapping Service Stale Override Cache (`fn_map_lookup/mapping_service.py`)
+- Override cache now resets timestamp on API failure to avoid hammering the API on every subsequent call.
+
+#### Mapping Service Invalid Conversion Factor Logging (`fn_map_lookup/mapping_service.py`)
+- Added `logger.warning()` for invalid conversion factor values (e.g., `"N/A"`, `"TBD"`) instead of silent `pass`.
+
+#### `fn_stock_snapshot` Bare Except
+- Replaced `except:` with `except Exception as e:` and added error details to the log.
+
+#### BOM Orchestration Test Fix (`tests/integration/test_bom_orchestration.py`)
+- Added missing `sap_uom="m"` to test mock `MappingResult` in `test_mapping_with_unit_conversion` — test was broken since v1.8.0 SAP UOM refactor.
+
+#### CRITICAL: Margin Orchestrator Wrong Sheet Reference (`shared/margin_orchestrator.py`)
+- **Before:** Used `Sheet.LPO_MASTER` / `Column.LPO_MASTER.DELIVERED_QUANTITY_SQM` to read SQM from TAG_REGISTRY rows — column name mismatch caused 0 SQM.
+- **After:** Uses `Sheet.TAG_REGISTRY` / `Column.TAG_REGISTRY.TOTAL_AREA_SQM`.
+
+#### CRITICAL: Margin Orchestrator KeyError on None Column (`shared/margin_orchestrator.py`)
+- **Before:** `manifest.get_column_name()` returning `None` was used as dict key in `col_ids[None]` → `KeyError("None")`.
+- **After:** Null guard validates all column resolutions, raises `ValueError` with missing column names.
+
+#### `datetime.now()` → `datetime.utcnow()` Across Codebase
+- Fixed 13 occurrences across `audit.py`, `models.py`, `manifest.py`, `id_generator.py`, `helpers.py`, `consumption_service.py`, `fn_lpo_ingest`, `fn_lpo_update`, `fn_ingest_tag`, `fn_schedule_tag`.
+
+#### Bare `float()` → `parse_float_safe()` Across Codebase
+- Fixed 25+ occurrences across `consumption_service.py`, `allocation_service.py`, `allocation_engine.py`, `stock_service.py`, `atomic_update.py`, `costing_service.py`, `fn_stock_snapshot`, `fn_pending_items`, event dispatcher handlers.
+
+#### Costing Service f-string Syntax Error (`shared/costing_service.py`)
+- **Before:** `f"Error reading config key {config_key}: str({e})"` — `str()` was literal text.
+- **After:** `f"Error reading config key {config_key}: {e}"`.
+
+#### `fn_process_manager_approval` Hardcoded Column Names
+- Replaced 3 hardcoded column strings with `Column.MARGIN_APPROVAL_LOG.*` enum references.
+- Replaced direct `client._make_request()` calls with proper `client.update_row()`.
+
+#### `fn_confirm_submission` Idempotency
+- Added idempotency check: if submission status already matches target, returns 200 `ALREADY_PROCESSED`.
+
+### Added (Audit & Observability)
+
+#### `log_user_action()` Across Write Operations
+- Added audit logging in: `allocation_engine.py` (allocation creation), `consumption_service.py` (consumption submission + tag completion), `margin_orchestrator.py` (approval record creation), `fn_process_manager_approval` (DO creation, approval update, tag dispatch).
+
+#### `create_exception()` in Error Paths
+- Added exception records in: `allocation_engine.py` (row + txn write failures), `consumption_service.py` (orphaned materials, inventory txn failure), `margin_orchestrator.py` (pending tags, approval write, PA dispatch), `costing_service.py` (config, SAP price, LPO lookup), `fn_allocate` (outer catch), `fn_process_manager_approval` (10 error paths), `fn_confirm_submission` (submission not found).
+
+#### Distributed Locking in `fn_process_manager_approval`
+- Wrapped read-modify-write section with `AllocationLock` to prevent concurrent approval races.
+
+#### Human-Readable Smartsheet Logging (`shared/smartsheet_client.py`)
+- Log messages now show `SHEET_NAME (numeric_id)` instead of just `numeric_id` — e.g., `"Added row to sheet CONSUMPTION_LOG (728462)"`.
+
+### Tests
+- **431 tests passing** (all green after fixes)
+
+---
+
+## [1.8.0] - 2026-03-09
+
+### Overview
+Refactors the material mapping architecture to a **3-sheet lookup model**, fixes downstream BOM unit conversion to produce SAP-compatible quantities, and fixes the allocation engine to operate by SAP code (not canonical code) throughout — aligning it with SAP as the source of truth.
+
+### Changed
+
+#### Material Mapping — 3-Sheet Lookup (`fn_map_lookup/mapping_service.py`)
+
+**Previous:** 05a Material Master contained both identity and conversion factors. Override sheet (05b) was the only source of SAP code differentiation. No brand awareness.
+
+**New lookup flow:**
+1. **05a Material Master** — resolves `nesting_description` → `canonical_code` + `default_sap_code` (identity only; no conversion factors)
+2. **05b Mapping Override** — checks for brand/LPO overrides with strict precedence: `LPO > BRAND > PROJECT > CUSTOMER`. Effective date range enforced.
+3. **05c SAP Material Catalog** — single source of truth for `SAP_CODE`, `SAP_UOM`, `UOM`, and `CONVERSION_FACTOR`. Looked up by the resolved SAP code (from override or default).
+
+- Added `CatalogEntry` dataclass for 05c catalog entries
+- Added `_catalog_cache` (keyed by `sap_code`, 5-minute TTL) alongside the existing material master and override caches
+- Added `brand` parameter to `MappingService.lookup()` — enables brand-scoped override resolution
+- `MaterialMasterEntry` no longer stores conversion factors (moved entirely to 05c)
+- `invalidate_cache()` now clears all three caches atomically
+- Added `get_cache_stats()` for monitoring
+
+#### Brand Propagation (`fn_parse_nesting/`, `fn_parse_nesting/bom_orchestrator.py`)
+
+- Added `brand` parameter to `process_bom_from_record()`, `BOMOrchestrator.process()`, and `BOMOrchestrator._map_lines()`
+- `fn_parse_nesting/__init__.py` now passes `brand` (extracted from LPO details) through to BOM processing
+- `brand` is forwarded to `MappingService.lookup()` enabling brand-specific SAP code resolution (e.g., WTI vs KIMMCO aluminium tape codes)
+
+#### BOM Conversion — SAP-Compatible Output (`fn_parse_nesting/bom_orchestrator.py`)
+
+- **Before:** `CANONICAL_QUANTITY` was converted to `result.uom` (nesting UOM — e.g., `m`). Not SAP-compatible.
+- **After:** `CANONICAL_QUANTITY` is converted to `result.sap_uom` (e.g., `ROL`). `CANONICAL_UOM` now reflects SAP UOM.
+- Conversion only runs when both `sap_uom` and `conversion_factor` are present (from 05c catalog).
+
+| PARSED_BOM Column | Contents |
+|---|---|
+| `QUANTITY` + `UOM` | Raw from nesting file (e.g., 100 m) |
+| `CANONICAL_QUANTITY` + `CANONICAL_UOM` | SAP-compatible (e.g., 4 ROL) |
+| `SAP_CODE` | Resolved SAP material code |
+| `CANONICAL_CODE` | Internal bridge code (lookup intermediary only) |
+
+#### Allocation Engine — SAP Code Throughout (`shared/allocation_engine.py`)
+
+- **Before:** Aggregated materials by `CANONICAL_CODE`, checked stock by `CANONICAL_CODE`, and wrote `CANONICAL_CODE` to `ALLOCATION_LOG` and `INVENTORY_TXN_LOG`. SAP inventory snapshot lookups would never match.
+- **After:** Reads `SAP_CODE` from `PARSED_BOM`, aggregates by SAP code, checks available stock by SAP code, and writes SAP code to `ALLOCATION_LOG.MATERIAL_CODE` and `INVENTORY_TXN_LOG.MATERIAL_CODE`.
+- `MaterialNeed.canonical_code` renamed to `MaterialNeed.sap_code`
+
+### Fixed
+- **Allocation stock check never matched** — `compute_available_qty()` was called with `canonical_code` but `SAP_INVENTORY_SNAPSHOT` is keyed by SAP code. Now correctly passes `sap_code`.
+- **BOM quantities not SAP-compatible** — `CANONICAL_QUANTITY` was in nesting UOM; now always in SAP UOM from 05c catalog.
+
+### Logical Names (`shared/logical_names.py`)
+- Renamed `Sheet.LPO_MATERIAL_BRAND_MAP` → `Sheet.SAP_MATERIAL_CATALOG`
+- Updated `Column.SAP_MATERIAL_CATALOG` with full 05c column set: `MAP_ID`, `NESTING_DESCRIPTION`, `CANONICAL_CODE`, `SAP_CODE`, `UOM`, `SAP_UOM`, `CONVERSION_FACTOR`, `NOT_TRACKED`, `ACTIVE`, `NOTES`, `UPDATED_AT`, `UPDATED_BY`
+
+### Tests
+- Rewrote `tests/unit/test_mapping_service.py` (13 tests) covering:
+  - AUTO mapping with catalog conversion factor
+  - Brand override selecting different SAP code
+  - LPO override taking priority over BRAND override
+  - Default fallback when no override matches
+  - Missing catalog entry (no conversion factor, still succeeds)
+  - Idempotency via Mapping History
+  - Exception creation for unknown materials
+  - Cache avoidance, cache invalidation, API refresh for all three caches
+  - Cache statistics
+
+---
+
+## [1.7.0] - 2026-02-23
+
+### Overview
+Introduces 9 new Azure Functions to power Teams adaptive card workflows via Power Automate. Covers the full consumption lifecycle: query pending allocations, aggregate materials, submit/approve consumption, capture stock counts, and create exceptions.
+
+### Added
+
+#### Infrastructure
+- **`shared/queue_lock.py`** - Distributed locking via Azure Queue Storage:
+  - `acquire_allocation_lock()` - Locks allocation IDs using message visibility timeouts
+  - `release_allocation_lock()` - Releases lock by deleting queue messages
+  - `AllocationLock` - Context manager for automatic lock release on exit
+  - Crash-resilient: locks auto-expire if process dies (no dangling locks)
+
+- **`shared/flow_models.py`** - Pydantic request/response models for all flow endpoints:
+  - Request models: `ConsumptionSubmission`, `ConsumptionLine`, `StockSubmission`, `StockLine`, `SubmissionConfirmRequest`, `AllocationAggregateRequest`, `ExceptionCreateRequest`
+  - Response models: `SubmissionResult`, `SubmissionStatusResponse`, `PendingItemsResponse`, `AllocationAggregateResponse`, `StockSnapshotResponse`, `ExceptionCreateResponse`
+  - Enums: `SubmissionStatus`, `WarningCode`, `ErrorCode`
+
+- **`shared/allocation_service.py`** - DRY allocation business logic:
+  - `get_pending_allocations()` - Shared query logic (status, date, shift filters)
+  - `aggregate_materials()` - Aggregates qty across allocations; calculates consumed/remaining
+
+- **`shared/consumption_service.py`** - Core consumption business logic:
+  - `validate_consumption()` - Variance checking, material validation, allocation existence checks
+  - `submit_consumption()` - Full flow: idempotency → lock → validate → atomic write
+  - Variance thresholds: **5% WARN**, **10% ERROR** (configurable via env vars)
+
+- **`shared/logical_names.py`** - Extended with:
+  - `Column.ALLOCATION_LOG` (11 columns: `ALLOCATION_ID`, `TAG_SHEET_ID`, `MATERIAL_CODE`, `QUANTITY`, `PLANNED_DATE`, `SHIFT`, `STATUS`, `STOCK_CHECK_FLAG`, `ALLOCATED_AT`, `RESERVED_UNTIL`, `REMARKS`)
+  - `Column.CONSUMPTION_LOG` (9 columns: `CONSUMPTION_ID`, `TAG_SHEET_ID`, `STATUS`, `CONSUMPTION_DATE`, `SHIFT`, `MATERIAL_CODE`, `QUANTITY`, `REMNANT_ID`, `REMARKS`)
+
+- **`shared/__init__.py`** - Exported all new modules and models
+
+#### Read Endpoints (Phase 1)
+- **`fn_pending_items`** (`GET /api/pending-items?plant=&shift=&max=`) - Lists pending allocations for Teams card display. Filters by status (Submitted/Approved), date (today/yesterday), and optional shift.
+- **`fn_submission_status`** (`GET /api/submission/status/{submission_id}`) - Returns submission status (PENDING_APPROVAL, APPROVED, REJECTED). Returns 404 if not found.
+- **`fn_stock_snapshot`** (`GET /api/stock/snapshot?plant=`) - Returns current inventory snapshot with last count date for variance detection. Gracefully handles missing snapshot sheet.
+
+#### Aggregation Endpoint (Phase 2)
+- **`fn_allocations_aggregate`** (`POST /api/allocations/aggregate`) - Aggregates material quantities across selected allocations. Returns allocated/already-consumed/remaining quantities per material code. Used to populate Teams consumption input card.
+
+#### Write Endpoints (Phase 3)
+- **`fn_submit_consumption`** (`POST /api/submission/consumption`) - Critical path write with:
+  - **Idempotency** via `submission_id` (safe to retry)
+  - **Distributed locking** on `allocation_ids` (prevents race conditions)
+  - **Variance validation** (WARN at 5%, ERROR blocks at 10%)
+  - Writes one `CONSUMPTION_LOG` row per material line
+  - Returns `SubmissionResult` with status (OK/WARN/ERROR), warnings, and errors
+
+- **`fn_confirm_submission`** (`POST /api/submission/confirm`) - Supervisor approve/reject flow:
+  - Updates status to `Approved` or `Adjustment Requested`
+  - Records approver and notes in remarks
+  - Rejected submissions retained as `REJECTED` (not deleted)
+
+- **`fn_submit_stock`** (`POST /api/submission/stock`) - Stock count submission endpoint (placeholder; full write logic to be added with INVENTORY_SNAPSHOT integration)
+
+- **`fn_create_exception_api`** (`POST /api/exception`) - Programmatic exception creation via existing `create_exception()` helper
+
+### New Environment Variables
+| Variable | Default | Description |
+|---|---|---|
+| `AZURE_STORAGE_CONNECTION_STRING` | *(required)* | Azure Queue Storage connection |
+| `QUEUE_LOCK_TIMEOUT_MS` | `30000` | Lock visibility timeout in ms |
+| `VARIANCE_WARN_THRESHOLD_PCT` | `5` | Variance % that triggers a warning |
+| `VARIANCE_ERROR_THRESHOLD_PCT` | `10` | Variance % that blocks submission |
 
 ---
 

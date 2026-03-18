@@ -1,11 +1,15 @@
 # Specification: Azure Functions that Serve Data to Power Automate
 
-**Goal:** a small set of simple, robust, production-grade HTTP functions that provide everything Power Automate needs for the Teams adaptive-card loop (pending items, aggregated allocation, submission intake, confirmation, stock snapshot, exception creation, submission status).
-Follow **SOTA** principles (secure, observable, idempotent, transactional) and **KISS**: keep each function responsibility tiny and deterministic. The flow control and UX live in Power Automate; the Functions are *stateless compute + authoritative logic*.
+**Goal:** A small set of simple, robust, production-grade HTTP functions that provide everything Power Automate needs for the Teams adaptive-card loop (pending items, aggregated allocation, submission intake, confirmation, stock snapshot, exception creation, submission status).
+
+Follow **SOTA** principles (secure, observable, idempotent, concurrency-safe) and **KISS**: keep each function responsibility tiny and deterministic. The flow control and UX live in Power Automate; the Functions are *stateless compute + authoritative logic*.
+
+> [!NOTE]
+> **Data Layer:** All persistent data lives in **Smartsheet** sheets (via the Smartsheet API and `workspace_manifest.json`). There is no SQL database — Smartsheet is the system of record.
 
 ---
 
-## Summary: functions to implement
+## Summary: Functions to Implement
 
 1. `GET /api/pending-items` — list pending tag allocations + stock flag
 2. `POST /api/allocations/aggregate` — return aggregated canonical materials for selected allocation(s)
@@ -17,57 +21,75 @@ Follow **SOTA** principles (secure, observable, idempotent, transactional) and *
 8. `POST /api/exception` — create an exception (used by Flow to escalate)
 9. (Optional) `GET /api/allocation/{allocation_id}` — return single allocation detail (if PA needs)
 
-Each function is an Azure Function (HTTP trigger), authenticated by Azure AD (managed identity/service principal); no user licenses required on Power Automate to *respond* to cards the Flow posts.
+Each function is an Azure Function (HTTP trigger), authenticated by **Azure Function keys** (host key or function-level key). No Azure AD or user licenses required.
 
 ---
 
-## General design principles (global, apply to all functions)
+## General Design Principles (apply to all functions)
 
 * **Single responsibility:** each endpoint does one thing only. Keep logic small.
 * **Idempotency:** clients (Power Automate) provide `submission_id` (GUID) for writes; functions must be idempotent if same `submission_id` reposted.
-* **Atomicity / Concurrency:** all writes use a DB transaction and concurrency checks (compare cumulative consumed vs allocated inside a single transaction). If multi-step, use SQL transaction or `sp_getapplock` to serialize on `allocation_id`.
-* **Auth & security:** Azure AD OAuth2 - require token from Flow/service principal. Validate `scp` or app role. Use managed identity + Key Vault for DB connection strings.
-* **Validation:** strict schema validation (JSON Schema or model binding). Return clear error codes and messages.
+* **Concurrency:** writes use **Azure Queue Storage distributed locks** (`queue_lock.py` → `AllocationLock` context manager) to serialize on `allocation_id`. This prevents race conditions when multiple operators submit concurrently.
+* **Data access:** all reads/writes go through the **`SmartsheetClient`** (`shared/smartsheet_client.py`), which uses the workspace manifest for ID-first sheet/column resolution. Smartsheet API rate limiting (290 req/min) is handled automatically.
+* **Validation:** strict schema validation using **Pydantic** models defined in `shared/flow_models.py`. Return clear error codes and messages.
 * **Error model:** return HTTP 2xx for success, 4xx for client error, 5xx for server error. Include `trace_id` in every response.
-* **Observability:** structured logging (App Insights), metrics (mapping_count, submission_count, exceptions_created), distributed tracing with `trace_id`.
-* **Caching:** use Redis/Memory for read-heavy lookup (pending items, allocation aggregation); TTL short (30–120s). Invalidate when relevant updates occur.
-* **Backpressure & retries:** client (Power Automate) should retry on transient 5xx with exponential backoff. Server protects with DB locks to avoid race conditions.
+* **Observability:** structured Python logging with `trace_id` in every log line. Application Insights integration via the Azure Functions host.
+* **Backpressure & retries:** client (Power Automate) should retry on transient 5xx with exponential backoff. Server protects with Azure Queue locks to avoid race conditions. The `SmartsheetClient` has built-in retry with exponential backoff for 429/5xx.
 * **Payloads:** small, deterministic JSON. Keep arrays concise. Avoid nested complexity; Power Automate deals better with flat structures.
-* **Testing:** unit tests, contract tests, integration tests with test DB, load tests for peak usage. Provide sample payloads and Postman collection.
+* **Testing:** unit tests (Pydantic model validation), integration tests (mocked Smartsheet API), and contract tests. Provide sample payloads.
+* **Exception logging:** all v1.7.0+ endpoints create `EXCEPTION_LOG` records in their outermost catch blocks via `create_exception()`. This ensures every unhandled error is persisted to the exception sheet for audit and alerting.
 
 ---
 
-## Database interactions / constraints (reference)
+## Data Layer: Smartsheet Sheets (reference)
 
-Primary tables involved (exist in your model): `allocation` / `allocation_line`, `bom_line`, `consumption_submission`, `consumption_line`, `stock_snapshot`, `mapping_history`, `exception_log`, `bom_snapshot_blob`. Ensure proper indexes on `allocation_id`, `tag_id`, `submission_id`, `plant+shift+date`.
+Primary sheets involved (defined in `workspace_manifest.json`, accessed via logical names in `shared/logical_names.py`):
 
-Important DB patterns:
+| Logical Name | Purpose |
+|---|---|
+| `TAG_REGISTRY` | Tag sheet registry (status, planning data) |
+| `LPO_MASTER` | LPO master list |
+| `ALLOCATION_LOG` | Allocation records (status, quantities, dates) |
+| `CONSUMPTION_LOG` | Consumption submission records |
+| `STOCK_SNAPSHOT` | Stock count submissions |
+| `EXCEPTION_LOG` | Exception/escalation records |
+| `MATERIAL_MAPPING` | Canonical material mapping |
+| `NESTING_LOG` | Nesting/cut session records |
+| `MARGIN_APPROVAL_LOG` | Margin approval records (status, metrics, card JSON) |
 
-* To accept consumption safely:
+**Important access patterns:**
 
-  1. Begin transaction.
-  2. SELECT current cumulative_consumed FROM consumption_agg WHERE allocation_id = X FOR UPDATE (or use `sp_getapplock('alloc_X')`).
-  3. Validate `cumulative_consumed + sum(new) <= allocated + remnant + tolerance`.
-  4. INSERT consumption lines and update aggregation table.
-  5. COMMIT.
-* Use `rowversion` on critical rows if needed; or use application lock to ensure correctness.
+* **Reads:** `client.list_rows(Sheet.ALLOCATION_LOG)` — returns all rows as dicts. Filter in memory (Smartsheet doesn't support complex server-side queries).
+* **Writes:** `client.add_row(Sheet.CONSUMPTION_LOG, row_data)` or `client.update_row(...)`.
+* **Concurrency guard:** before writing to allocation-related sheets, acquire a distributed lock:
+
+  ```python
+  from shared.queue_lock import AllocationLock
+
+  with AllocationLock(allocation_ids, trace_id=trace_id) as lock:
+      if not lock.success:
+          return 409, {"error": "LOCK_TIMEOUT", "trace_id": trace_id}
+      # safe to read + write
+  ```
+
+* **Optimistic concurrency:** Smartsheet returns `SmartsheetSaveCollisionError` (HTTP 409) on conflicting row updates — the client handles this via retry.
 
 ---
 
-## Function-by-function spec
+## Function-by-Function Spec
 
 ### 1) `GET /api/pending-items`
 
 **Purpose:** Return pending allocations (tags) for the user/plant so the initial selection card can present choices.
 
-**Auth:** Azure AD (Delegated app or Service Principal)
+**Auth:** Azure Function key (query param `code` or `x-functions-key` header)
 
 **Query params:**
 
 * `plant` (required)
 * `user` (string, optional) — used to filter personal queue (if needed)
 * `shift` (optional)
-* `max` (optional, default 50)
+* `max` (optional, default 50, capped at 100)
 
 **Response (200):**
 
@@ -76,8 +98,7 @@ Important DB patterns:
   "trace_id":"<guid>",
   "timestamp":"2026-02-20T08:00:00Z",
   "pending_tags":[
-    {"allocation_id":"A-123","tag_id":"TAG-1001","brief":"TAG-1001 - 5 ducts - LPO-55","alloc_date":"2026-02-20","alloc_qty":50.0},
-    ...
+    {"allocation_id":"A-123","tag_id":"TAG-1001","brief":"TAG-1001 - Allocation A-123","alloc_date":"2026-02-20","alloc_qty":50.0}
   ],
   "allow_stock_submission": true
 }
@@ -85,15 +106,15 @@ Important DB patterns:
 
 **Errors:**
 
-* 401 Unauthorized — invalid token
 * 400 Bad Request — missing plant
 * 500 Server Error — include `trace_id`
 
 **Implementation notes:**
 
-* Query `allocation` table: status `ALLOCATED` and `alloc_date = today` or `alloc_date >= today-1` (configurable).
-* Include `alloc_qty` summary, and `already_consumed` optionally in aggregate.
-* Cache results for 30–60 seconds.
+* Query `ALLOCATION_LOG` sheet via `client.list_rows(Sheet.ALLOCATION_LOG)`.
+* Filter in memory: status `Submitted` or `Approved`, date is today or yesterday (configurable).
+* Cap scan to 200 rows for performance.
+* Response model: `PendingItemsResponse` (from `shared/flow_models.py`).
 
 ---
 
@@ -105,7 +126,7 @@ Important DB patterns:
 
 ```json
 {
-  "allocation_ids": ["A-123","A-124"],   // OR "tag_ids": [...]
+  "allocation_ids": ["A-123","A-124"],
   "trace_id":"<guid>"
 }
 ```
@@ -130,10 +151,10 @@ Important DB patterns:
 
 **Implementation notes:**
 
-* The server computes `remaining_qty = max(0, allocated - cumulative_consumed)` per canonical code over provided allocations.
-* For multiple allocations that map to same canonical_code, sum allocated & consumed across allocations and present one aggregated row. This makes the consumption card simple: one row per canonical code.
-* Use a single DB query with GROUP BY canonical_code over `allocation_line` joined with `consumption_agg` (or compute sum(consumption_line) grouped).
-* Cache or memoize ephemeral queries during flow run.
+* Read allocation rows from `ALLOCATION_LOG` and consumption rows from `CONSUMPTION_LOG`.
+* Compute `remaining_qty = max(0, allocated - cumulative_consumed)` per canonical code.
+* For multiple allocations mapping to the same `canonical_code`, sum across allocations → one aggregated row.
+* Request model: `AllocationAggregateRequest`; response model: `AllocationAggregateResponse`.
 
 ---
 
@@ -145,7 +166,7 @@ Important DB patterns:
 
 ```json
 {
- "submission_id":"uuid",         // client-supplied idempotency key
+ "submission_id":"uuid",
  "user":"user@company",
  "plant":"PLANT-A",
  "shift":"MORNING",
@@ -164,41 +185,40 @@ Important DB patterns:
 * `200 OK` when accepted and no exceptions:
 
 ```json
-{ "status":"OK", "processed_submission_id":"<guid>", "warnings":[], "errors":[] , "trace_id":"..." }
+{ "status":"OK", "processed_submission_id":"<guid>", "warnings":[], "errors":[], "trace_id":"..." }
 ```
 
 * `200 OK` + `warnings` if variances found that need approval:
 
 ```json
-{ "status":"WARN", "processed_submission_id":"<guid>", "warnings":[{"code":"VAR_HIGH","detail":"Tape variance 12%"}], "trace_id":"..." }
+{ "status":"WARN", "processed_submission_id":"<guid>", "warnings":[{"code":"VARIANCE_WARN","message":"Tape variance 12%"}], "trace_id":"..." }
 ```
 
-* `409 Conflict` if submission_id already exists with different payload (client retry protection). Response should include existing `processed_submission_id`.
+* `409 Conflict` if submission_id already exists with different payload (client retry protection).
 * `400 Bad Request` for validation errors.
 * `500 Server Error` for unexpected errors.
 
 **Core logic (server):**
 
-1. Validate payload schema and units. Reject if missing `submission_id`.
-2. Idempotency: check `consumption_submission` table for `submission_id`.
-
-   * If exists, return existing record and 200 (idempotent).
-3. Begin DB transaction.
+1. Validate payload with `ConsumptionSubmission` Pydantic model.
+2. **Idempotency:** search `CONSUMPTION_LOG` sheet for existing `submission_id`.
+   * If exists with same payload → return existing record with 200.
+   * If exists with different payload → return 409.
+3. **Acquire distributed lock** via `AllocationLock(allocation_ids)`.
 4. For each canonical line:
+   * Read current cumulative consumed from `CONSUMPTION_LOG` for the affected allocation_ids.
+   * Compute `new_total = current_consumed + actual_qty`.
+   * If `new_total > allocated + tolerance` → flag error.
+5. If any **blocking errors**: release lock, return 400 with error details.
+6. If no blocking errors: add rows to `CONSUMPTION_LOG` sheet and update allocation status.
+7. Release lock.
+8. Evaluate **variance thresholds** (variance is calculated using **system allocation qty** from `aggregate_materials()`, not the user-submitted `allocated_qty`):
+   * If variance > WARN threshold (5–10%) → return `WARN`, add row to `EXCEPTION_LOG`.
+   * If variance > CRITICAL threshold (>10%) → block and create exception.
+   * If all OK → return `OK`.
+9. (Future) Push event to **Azure Queue Storage** for downstream processing.
 
-   * Compute `sum(current_consumed)` for the affected allocation_ids (use select with lock).
-   * Compute new cumulative = current_consumed + incoming_actual.
-   * If `new_cumulative > allocated + remnant + tolerance`, **flag error** for this line (not auto-accept). Collect all errors.
-5. If any **errors**: rollback and return 400 with error details (or create `exception_log` and return WARN depending on policy).
-6. If no blocking errors: insert `consumption_submission` and `consumption_line` rows and update `consumption_agg` (or `allocation_line.picked_qty`) accordingly.
-7. Commit transaction.
-8. Evaluate `variance_thresholds`:
-
-   * If any variance > WARN threshold but not blocking, return status `WARN`. Record submission as PENDING_APPROVAL and create an `exception_log` with `status=OPEN`.
-   * If all OK, return `OK`.
-9. Push event `submission_received` to Service Bus (for downstream reconciliation, reporting).
-
-**Important:** All DB writes must be in transaction to prevent race conditions. Use application locks or `SELECT ... FOR UPDATE` equivalent.
+**Models:** `ConsumptionSubmission` (request), `SubmissionResult` (response — includes `processed_submission_id: Optional[str]`).
 
 ---
 
@@ -216,11 +236,14 @@ Important DB patterns:
 
 **Server logic:**
 
-* Validate approver role and auth.
-* Load submission; must be in `PENDING_APPROVAL` state.
-* If APPROVE: finalize submission (set status COMPLETED), create `inventory_txn` records of type `ISSUE` or call SAP if required.
-* If REJECT: set status REJECTED, possibly create a task for submitter to revise.
-* Update `exception_log` and `mapping_history` if needed. Emit event.
+* **Acquire distributed lock** via `AllocationLock(processed_submission_id)` before reading or updating consumption rows.
+* Load submission from `CONSUMPTION_LOG`; must be in `PENDING_APPROVAL` status.
+* If APPROVE: update status to `COMPLETED`.
+* If REJECT: update status to `REJECTED`.
+* Update corresponding `EXCEPTION_LOG` row.
+* **Log user action** via `log_user_action()` to the User Action Log.
+
+**Model:** `SubmissionConfirmRequest` (request).
 
 ---
 
@@ -233,6 +256,8 @@ Important DB patterns:
 ```json
 { "submission_id":"...", "status":"OK|WARN|PENDING_APPROVAL|ERROR|COMPLETED", "warnings":[], "errors":[], "created_at":"..." }
 ```
+
+**Model:** `SubmissionStatusResponse`.
 
 ---
 
@@ -248,13 +273,14 @@ Important DB patterns:
  "plant":"PLANT-A",
  "snapshot_time":"...",
  "lines":[
-   {"canonical_code":"CAN_TAPE_AL","system_physical_closing":120.5,"uom":"m","last_count":"2026-02-19"},
-   ...
+   {"canonical_code":"CAN_TAPE_AL","system_physical_closing":120.5,"uom":"m","last_count":"2026-02-19"}
  ]
 }
 ```
 
-**Implementation notes:** read the latest `inventory_snapshot` table (SAP snapshot merge) and cache for short TTL.
+**Implementation notes:** read latest rows from `STOCK_SNAPSHOT` sheet filtered by plant. Uses manifest-based column lookups (via `workspace_manifest.json`) instead of hardcoded column name strings.
+
+**Model:** `StockSnapshotResponse`.
 
 ---
 
@@ -276,7 +302,7 @@ Important DB patterns:
 }
 ```
 
-**Logic:** validate, idempotent via `submission_id`, insert `stock_snapshot_submission` and `stock_snapshot_line`, compute variances, create exceptions for out-of-tolerance variance, return OK/WARN.
+**Logic:** validate with `StockSubmission` model, idempotent via `submission_id`, add rows to `STOCK_SNAPSHOT` sheet, compute variances against last known system stock, create exceptions in `EXCEPTION_LOG` for out-of-tolerance variance, return OK/WARN.
 
 ---
 
@@ -290,7 +316,9 @@ Important DB patterns:
 { "type":"CONSUMPTION_VARIANCE", "reference":"submission_id or allocation_id", "severity":"HIGH", "note":"escalate", "created_by":"user@company", "trace_id":"..." }
 ```
 
-**Response:** exception_id.
+**Response:** `exception_id` + `trace_id`.
+
+**Model:** `ExceptionCreateRequest` (request), `ExceptionCreateResponse` (response).
 
 ---
 
@@ -300,41 +328,45 @@ Important DB patterns:
 
 **Response:** allocation lines including per-canonical allocated & remaining quantities.
 
----
-
-## Security & auth details
-
-* **Auth:** Azure AD bearer tokens. The Power Automate flow runs as a Service Principal (app registration) or uses the Flow’s built-in connection using a system account. Functions validate the token via AAD.
-* **Scopes/roles:** Use app roles (e.g., `consumption.submit`, `consumption.approve`, `allocation.read`).
-* **Managed identity:** use function app managed identity to fetch keys from Key Vault (DB connection strings, Redis keys).
-* **Least privilege**: the Flow’s service principal only needs to call these endpoints; approvals use manager account tokens.
+**Model:** `AllocationDetailResponse`.
 
 ---
 
-## Caching & performance
+## Security & Auth
 
-* Cache `GET /api/pending-items` and `GET /api/allocations/aggregate` results in Redis or in-memory for 30–60s to reduce DB load.
-* But **do not** cache writes. For aggregated read, use cache invalidation on allocation create/update events.
-* Ensure functions have adequate timeouts (e.g., 120s) and small memory; heavy jobs (reporting, reconciliation) run elsewhere.
+* **Auth:** Azure Function keys. Power Automate calls functions with the function/host key in the `x-functions-key` header or `code` query parameter. No Azure AD required.
+* **Smartsheet API:** authenticated via `SMARTSHEET_API_KEY` environment variable (stored in Azure Function App Settings / Key Vault for production).
+* **Azure Storage:** accessed via `AzureWebJobsStorage` connection string (for Queue locks and Blob Storage).
+* **Power Automate flows:** triggered via HTTP POST to pre-configured flow URLs (stored as environment variables: `POWER_AUTOMATE_CREATE_FOLDERS_URL`, `POWER_AUTOMATE_UPLOAD_FILES_URL`, etc.).
+* **Secrets management:** for production, store secrets in Azure Key Vault and reference via App Settings.
 
 ---
 
-## Logging, tracing & monitoring
+## Concurrency & Distributed Locking
 
-* Use Application Insights:
+* **Azure Queue Storage locks** (`shared/queue_lock.py`):
+  * Lock queue: `allocation-locks`
+  * Mechanism: send message with `allocation_id` as content; visibility timeout acts as lock duration (default 60s, max 5min).
+  * Release: delete message. If process crashes, lock auto-releases after timeout.
+  * Context manager: `AllocationLock(allocation_ids, timeout_ms, trace_id)`.
+* **Smartsheet optimistic concurrency:** the API returns 409 on save collisions; `SmartsheetClient` retries automatically with backoff.
+* There is **no SQL transaction** — atomicity is achieved by lock-then-write-then-release pattern on Smartsheet rows.
 
-  * Track custom metrics: `consumption_submissions`, `warnings_count`, `exceptions_created`, `pending_items_count`.
-  * Emit trace logs with `trace_id` and helpful fields (`user`, `allocation_ids`, `submission_id`).
-* Correlate logs with Service Bus events using trace_id.
-* Create alerts for:
+---
 
-  * Exception queue length > threshold
+## Logging, Tracing & Monitoring
+
+* Use structured Python `logging` with `trace_id` in every log line.
+* Application Insights collects logs automatically via the Azure Functions host (`host.json`).
+* Log key fields: `trace_id`, `user`, `allocation_ids`, `submission_id`, `plant`, `shift`.
+* Create Azure Monitor alerts for:
+  * Exception count > threshold
   * API error rate > 1%
-  * Critical DB lock wait > threshold
+  * Function execution duration > 30s
 
 ---
 
-## Error codes & consistent responses
+## Error Codes & Consistent Responses
 
 Design a simple error structure:
 
@@ -349,21 +381,22 @@ Design a simple error structure:
 }
 ```
 
-Map common error codes:
+Map common error codes (defined in `shared/flow_models.py`):
 
 * `INVALID_PAYLOAD` (400)
 * `ALLOCATION_NOT_FOUND` (404)
 * `ALREADY_SUBMITTED` (409)
-* `VARIANCE_HIGH` (200 WARN or 409 depending)
+* `VARIANCE_HIGH` / `VARIANCE_WARN` (200 WARN)
+* `VARIANCE_CRITICAL` (400/409)
 * `INSUFFICIENT_STOCK` (400/409)
-* `AUTH_ERROR` (401/403)
+* `LOCK_TIMEOUT` (409)
 * `SERVER_ERROR` (500)
 
 ---
 
-## Idempotency patterns
+## Idempotency Patterns
 
-* Require client `submission_id` GUID for every write (consumption or stock). If missing, the server can generate one but prefer client-provided.
+* Require client `submission_id` GUID for every write (consumption or stock). If missing, reject with 400.
 * On POST:
 
   * If a record exists with same `submission_id`, return existing state with 200 (idempotent).
@@ -371,78 +404,90 @@ Map common error codes:
 
 ---
 
-## Testing & acceptance criteria (developer handover)
+## Testing & Acceptance Criteria
 
 **Unit tests**
 
-* Schema validation for each endpoint.
-* DB transaction race tests: simulate concurrent submissions for same allocation; second should fail or be accepted if within tolerance.
+* Pydantic model validation for each request/response model.
+* Lock acquire/release flow (mock Azure Queue).
 * Idempotency tests: repost same submission_id and confirm no duplicate writes.
 
 **Integration tests**
 
-* Flow simulation: call `GET /pending-items` -> select tags -> `allocations/aggregate` -> post `submission/consumption` -> ensure DB updated and `consumption_agg` correct.
-* WARN path: deliberately submit variance > warn threshold and confirm exception created and status PENDING_APPROVAL.
+* Flow simulation: call `GET /pending-items` → select tags → `allocations/aggregate` → post `submission/consumption` → verify Smartsheet rows updated.
+* WARN path: deliberately submit variance > warn threshold and confirm exception created and status `PENDING_APPROVAL`.
 
 **Load tests**
 
-* Simulate 200 concurrent users clicking cards and submitting over 2 shifts, measure latency and DB throughput.
+* Simulate concurrent submissions for same allocation IDs; verify distributed lock prevents race conditions.
 
 **Acceptance**
 
-* All happy flows complete under 1.5s for reads; writes complete under 2–3s under normal load.
-* No duplicate consumption lines for duplicate submission_id.
+* All happy flows complete under 2s for reads; writes complete under 5s (inclusive of Smartsheet API latency).
+* No duplicate rows for duplicate `submission_id`.
 * WARNs trigger exceptions and produce approval flow.
 
 ---
 
-## Deployment & infra notes
+## Deployment & Infra Notes
 
-* Use 1 Function App for mapping/reads and another for writes? You may group them; keep scale plan predictable.
-* Use Premium plan if Durable Functions or longer cold starts needed; otherwise Consumption Plan with Proxies is fine.
-* Ensure Service Bus and Redis are in same region.
-* Use App Configuration or Key Vault for thresholds and feature flags (warn_pct, tolerance absolute units).
+* All functions are grouped in a single Azure Function App (Python, Consumption Plan).
+* Dependencies: `azure-functions`, `requests`, `pydantic`, `smartsheet-python-sdk`, `azure-storage-queue`.
+* Environment variables (via `local.settings.json` locally, App Settings in Azure):
+  * `SMARTSHEET_API_KEY` — Smartsheet API bearer token
+  * `SMARTSHEET_BASE_URL` — `https://api.smartsheet.eu/2.0`
+  * `SMARTSHEET_WORKSPACE_ID` — workspace ID for manifest resolution
+  * `AzureWebJobsStorage` — Azure Storage connection string (used for queue locks)
+  * `POWER_AUTOMATE_*_URL` — Power Automate flow trigger URLs
+  * `FLOW_FIRE_AND_FORGET` / `FLOW_CONNECT_TIMEOUT` / `FLOW_READ_TIMEOUT` / `FLOW_MAX_RETRIES` — PA client config
+* Use Azure Key Vault for production secrets.
+* Functions are deployed via `func azure functionapp publish` (see `deploy.ps1`).
 
 ---
 
-## Example: pseudocode for `POST /api/submission/consumption`
+## Example: Pseudocode for `POST /api/submission/consumption`
 
 ```python
 def post_consumption(req):
-    payload = req.json()
-    validate_schema(payload)
-    submission_id = payload['submission_id']
-    if exists_submission(submission_id):
-        return 200, get_submission_status(submission_id)
+    payload = ConsumptionSubmission(**req.json())  # Pydantic validation
+    trace_id = payload.trace_id or generate_trace_id()
 
-    trace_id = payload.get('trace_id') or new_guid()
-    begin_transaction()
-    try:
-        # 1. compute per allocation current consumed
-        for alloc in payload['allocation_ids']:
-            lock_allocation(alloc) # e.g., sp_getapplock or SELECT FOR UPDATE
-        # 2. compute cumulative and validate
-        for line in payload['lines']:
-            allocated = sum_allocated_for_canonical(payload['allocation_ids'], line['canonical_code'])
-            current_consumed = sum_consumed_for_allocations(...)
-            new_total = current_consumed + line['actual_qty']
-            if new_total > allocated + remnant + tolerance:
+    # 1. Idempotency check
+    client = get_smartsheet_client()
+    existing = find_submission_in_sheet(client, payload.submission_id)
+    if existing:
+        return 200, existing_result(existing)
+
+    # 2. Acquire distributed lock
+    with AllocationLock(payload.allocation_ids, trace_id=trace_id) as lock:
+        if not lock.success:
+            return 409, {"error": "LOCK_TIMEOUT", "trace_id": trace_id}
+
+        # 3. Read current consumed from CONSUMPTION_LOG
+        for line in payload.lines:
+            current_consumed = sum_consumed_for_allocations(
+                client, payload.allocation_ids, line.canonical_code
+            )
+            new_total = current_consumed + line.actual_qty
+            allocated = sum_allocated_for_canonical(
+                client, payload.allocation_ids, line.canonical_code
+            )
+            if new_total > allocated + tolerance:
                 raise ValidationError('INSUFFICIENT_STOCK', details)
-        # 3. insert submission and lines
-        insert_submission(...)
-        insert_lines(...)
-        update_consumption_agg(...) # update cumulative
-        commit_transaction()
-    except ValidationError as e:
-        rollback_transaction()
-        return 400 or 200-WARN as per policy
-    except Exception:
-        rollback_transaction()
-        log.exception(trace_id)
-        return 500
-    # 4. trigger event and return OK/WARN
-    publish_event('submission_received', submission_id)
-    return 200, {"status":"OK","processed_submission_id":submission_id,"trace_id":trace_id}
+
+        # 4. Write submission + lines to CONSUMPTION_LOG sheet
+        add_consumption_rows(client, payload)
+        update_allocation_status(client, payload.allocation_ids)
+
+    # Lock auto-released by context manager
+
+    # 5. Evaluate variance thresholds
+    warnings = check_variance_thresholds(payload)
+    if warnings:
+        add_exception_rows(client, payload, warnings)
+        return 200, {"status": "WARN", "warnings": warnings, "trace_id": trace_id}
+
+    return 200, {"status": "OK", "processed_submission_id": payload.submission_id, "trace_id": trace_id}
 ```
 
 ---

@@ -200,7 +200,7 @@ class WorkspaceManifest:
         if not save_path:
             raise ManifestError("No path specified for saving manifest")
         
-        self._data["_meta"]["generated_at"] = datetime.now().isoformat()
+        self._data["_meta"]["generated_at"] = datetime.utcnow().isoformat()
         
         with open(save_path, "w", encoding="utf-8") as f:
             json.dump(self._data, f, indent=2, ensure_ascii=False)

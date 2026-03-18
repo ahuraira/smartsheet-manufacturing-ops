@@ -26,6 +26,9 @@ from typing import Dict, List, Optional
 
 from .logical_names import Sheet, Column
 from .manifest import get_manifest
+from .helpers import parse_float_safe
+from .audit import create_exception, log_user_action
+from .models import ActionType, ReasonCode, ExceptionSeverity, ExceptionSource
 from .stock_service import compute_available_qty, determine_stock_flag
 from .inventory_service import log_inventory_transaction
 
@@ -187,9 +190,9 @@ def allocate_for_session(
         if not sap_code:
             continue  # Skip unmapped lines
 
-        qty = float(row.get(col_bom_qty) or row.get(col_bom_raw_qty) or 0)
+        qty = parse_float_safe(row.get(col_bom_qty) or row.get(col_bom_raw_qty), default=0.0)
         uom = row.get(col_bom_uom, "")
-        raw_qty = float(row.get(col_bom_raw_qty) or 0)
+        raw_qty = parse_float_safe(row.get(col_bom_raw_qty), default=0.0)
         raw_uom = row.get(col_bom_raw_uom, "")
         description = row.get(col_bom_description, "")
 
@@ -281,8 +284,29 @@ def allocate_for_session(
                 f"[{trace_id}] Created allocation {alloc_id}: "
                 f"{sap_code} qty={alloc_qty} flag={flag}"
             )
+            try:
+                log_user_action(
+                    client=client, user_id="system",
+                    action_type=ActionType.ALLOCATION_CREATED,
+                    target_table="ALLOCATION_LOG", target_id=alloc_id,
+                    notes=f"Allocated {sap_code} qty={alloc_qty}",
+                    trace_id=trace_id
+                )
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"[{trace_id}] Failed to write allocation row for {sap_code}: {e}")
+            try:
+                create_exception(
+                    client=client, trace_id=trace_id,
+                    reason_code=ReasonCode.SYSTEM_ERROR,
+                    severity=ExceptionSeverity.CRITICAL,
+                    source=ExceptionSource.ALLOCATION,
+                    material_code=sap_code,
+                    message=f"Failed to create allocation row for {sap_code}: {str(e)[:500]}"
+                )
+            except Exception:
+                pass
             result.warnings.append({
                 "code": "ALLOC_WRITE_FAILED",
                 "message": f"Failed to create allocation for {sap_code}: {e}"
@@ -292,18 +316,32 @@ def allocate_for_session(
         # ── Write INVENTORY_TXN_LOG row (negative = reservation) ───
         if alloc_qty > 0:
             try:
-                txn_id = log_inventory_transaction(
+                from .inventory_service import log_inventory_transactions_batch
+                log_inventory_transactions_batch(
                     client=client,
-                    txn_type="Allocation",
-                    material_code=sap_code,
-                    quantity=-alloc_qty,  # Negative = reservation
-                    reference_doc=alloc_id,
-                    source_system="AzureFunc",
+                    transactions=[{
+                        "txn_type": "Allocation",
+                        "material_code": sap_code,
+                        "quantity": -alloc_qty,  # Negative = reservation
+                        "reference_doc": alloc_id,
+                        "source_system": "AzureFunc"
+                    }],
                     trace_id=trace_id
                 )
-                logger.debug(f"[{trace_id}] Created inventory txn {txn_id} for {sap_code}")
+                logger.debug(f"[{trace_id}] Created inventory txn batch for {sap_code}")
             except Exception as e:
                 logger.error(f"[{trace_id}] Failed to write inventory txn for {sap_code}: {e}")
+                try:
+                    create_exception(
+                        client=client, trace_id=trace_id,
+                        reason_code=ReasonCode.SYSTEM_ERROR,
+                        severity=ExceptionSeverity.CRITICAL,
+                        source=ExceptionSource.ALLOCATION,
+                        material_code=sap_code,
+                        message=f"Failed to write inventory txn for {sap_code}: {str(e)[:500]}"
+                    )
+                except Exception:
+                    pass
                 result.warnings.append({
                     "code": "TXN_WRITE_FAILED",
                     "message": f"Inventory txn failed for {sap_code}: {e}"

@@ -256,6 +256,7 @@ Tag doesn't exist or LPO validation failed.
 1. **Idempotency (v2.0.0):** Duplicate `client_request_id` or file hash blocked with 409
 2. **Fail-Fast Validation:** Tag must exist and be in "Planned" status before parsing
 3. **Automatic BOM Generation (v1.6.0):** All nesting materials mapped to SAP codes
+   - **Note:** A conversion factor of `0.0` is now handled explicitly during BOM unit conversion. Previously it was silently skipped due to Python falsiness (`if factor:` evaluates to `False` for `0.0`). Zero conversion factors now produce a warning log instead of a silent skip.
 4. **Enrichment (v1.6.7):** Backtracking from LPO for brand, area_type, and folder URL
 5. **Blob Storage (v1.6.7):** Nesting file uploaded to Azure Blob for Power Automate
 6. **Exception Creation:** Warnings create exception records for manual review

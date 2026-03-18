@@ -36,6 +36,7 @@ from shared import (
     # Shared attachment extraction (v1.6.3)
     extract_row_attachments_as_files,
 )
+from shared.helpers import parse_float_safe
 from ..models import RowEvent, DispatchResult
 
 logger = logging.getLogger(__name__)
@@ -77,10 +78,17 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
             # Get tag ID from physical column name
             from shared import get_manifest
             manifest = get_manifest()
-            tag_name_col = manifest.get_column_name("TAG_REGISTRY", "TAG_NAME") or "Tag Sheet Name / Rev"
+            tag_name_col = manifest.get_column_name("TAG_REGISTRY", "TAG_NAME")
+            if not tag_name_col:
+                logger.error(f"[{trace_id}] TAG_REGISTRY.TAG_NAME not found in manifest")
+                return DispatchResult(
+                    status="ERROR",
+                    handler="tag_ingest",
+                    message="TAG_REGISTRY.TAG_NAME not found in manifest",
+                    trace_id=trace_id
+                )
             existing_tag_id = (
                 existing.get(tag_name_col) or
-                existing.get("Tag Sheet Name / Rev") or
                 existing.get("id")
             )
             logger.info(f"[{trace_id}] DEDUP: Staging row {event.row_id} already processed as {existing_tag_id}")
@@ -132,7 +140,7 @@ def handle_tag_ingest(event: RowEvent) -> DispatchResult:
             request = TagIngestRequest(
                 client_request_id=client_request_id,
                 lpo_sap_reference=lpo_sap_ref or "",
-                required_area_m2=float(required_area or 0),
+                required_area_m2=parse_float_safe(required_area, default=0.0),
                 requested_delivery_date=delivery_date,
                 uploaded_by=event.actor_id or "system",
                 tag_name=tag_name,  # Now populated from staging

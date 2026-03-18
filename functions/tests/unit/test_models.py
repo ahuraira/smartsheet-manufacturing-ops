@@ -275,14 +275,14 @@ class TestExceptionRecord:
     
     @pytest.mark.unit
     def test_created_at_default(self):
-        """Test that created_at defaults to now."""
-        before = datetime.now()
+        """Test that created_at defaults to utcnow."""
+        before = datetime.utcnow()
         record = ExceptionRecord(
             source=ExceptionSource.ALLOCATION,
             reason_code=ReasonCode.SHORTAGE,
             severity=ExceptionSeverity.HIGH
         )
-        after = datetime.now()
+        after = datetime.utcnow()
         assert before <= record.created_at <= after
     
     @pytest.mark.unit

@@ -38,6 +38,7 @@ from dataclasses import dataclass
 
 from .logical_names import Sheet, Column
 from .manifest import get_manifest
+from .helpers import parse_float_safe
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,7 @@ def atomic_increment(
                     error_message=f"Row {row_id} not found"
                 )
             
-            current_value = float(current_row.get(physical_col) or 0)
+            current_value = parse_float_safe(current_row.get(physical_col), default=0.0)
             new_value = current_value + increment_by
             
             # 2. Attempt update
@@ -237,7 +238,7 @@ def atomic_set_if_equals(
                 error_message=f"Row {row_id} not found"
             )
         
-        current_value = float(current_row.get(physical_col) or 0)
+        current_value = parse_float_safe(current_row.get(physical_col), default=0.0)
         
         if current_value != expected_value:
             logger.warning(

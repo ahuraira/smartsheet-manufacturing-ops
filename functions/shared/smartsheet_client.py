@@ -290,7 +290,19 @@ class SmartsheetClient:
         return response
     
     # ============== Sheet ID Resolution ==============
-    
+
+    @staticmethod
+    def _sheet_label(sheet_ref: Union[str, int], sheet_id: Optional[int] = None) -> str:
+        """Return a human-readable label for log messages.
+
+        Examples:
+            _sheet_label("CONSUMPTION_LOG", 728462)  -> "CONSUMPTION_LOG (728462)"
+            _sheet_label(728462)                      -> "728462"
+        """
+        if isinstance(sheet_ref, str):
+            return f"{sheet_ref} ({sheet_id})" if sheet_id else sheet_ref
+        return str(sheet_ref)
+
     def resolve_sheet_id(self, sheet_ref: Union[str, int]) -> int:
         """
         Resolve a sheet reference to its numeric ID.
@@ -411,7 +423,7 @@ class SmartsheetClient:
             if sheet_id in self._column_cache and column_name in self._column_cache[sheet_id]:
                 return self._column_cache[sheet_id][column_name]
         
-        raise SmartsheetNotFoundError(f"Column '{column_name}' not found in sheet {sheet_id}")
+        raise SmartsheetNotFoundError(f"Column '{column_name}' not found in sheet {sheet_id}. Check logical_names.py and workspace_manifest.json.")
     
     def _load_sheet_columns(self, sheet_id: int):
         """Load and cache column names for a sheet."""
@@ -487,7 +499,7 @@ class SmartsheetClient:
             
         except requests.HTTPError as e:
             if e.response is not None and e.response.status_code == 404:
-                logger.warning(f"Row {row_id} not found in sheet {sheet_id}")
+                logger.warning(f"Row {row_id} not found in sheet {self._sheet_label(sheet_ref, sheet_id)}")
                 return None
             raise
 
@@ -537,7 +549,7 @@ class SmartsheetClient:
             
         except requests.HTTPError as e:
             if e.response is not None and e.response.status_code == 404:
-                logger.warning(f"Row {row_id} not found in sheet {sheet_id}")
+                logger.warning(f"Row {row_id} not found in sheet {self._sheet_label(sheet_ref, sheet_id)}")
                 return []
             raise
     
@@ -688,7 +700,7 @@ class SmartsheetClient:
         result = response.json()
         created_row = result.get("result", {})
         
-        logger.info(f"Added row to sheet {sheet_id}: row_id={created_row.get('id')}")
+        logger.info(f"Added row to sheet {self._sheet_label(sheet_ref, sheet_id)}: row_id={created_row.get('id')}")
         return created_row
     
     @retry_with_backoff(max_retries=3)
@@ -744,7 +756,7 @@ class SmartsheetClient:
         response = self._make_request("PUT", url, json=payload)
         result = response.json()
         
-        logger.info(f"Updated row {row_id} in sheet {sheet_id}")
+        logger.info(f"Updated row {row_id} in sheet {self._sheet_label(sheet_ref, sheet_id)}")
         return result.get("result", [{}])[0]
     
     def _row_to_dict(self, row: Dict[str, Any], col_id_to_name: Dict[int, str]) -> Dict[str, Any]:
@@ -811,12 +823,12 @@ class SmartsheetClient:
                 created = result.get("result", [])
                 created_rows.extend(created if isinstance(created, list) else [created])
                 
-                logger.debug(f"Added batch of {len(batch)} rows to sheet {sheet_id}")
+                logger.debug(f"Added batch of {len(batch)} rows to sheet {self._sheet_label(sheet_ref, sheet_id)}")
             except Exception as e:
                 logger.error(f"Failed to add batch starting at row {i}: {e}")
                 raise
         
-        logger.info(f"Added {len(created_rows)} rows to sheet {sheet_id}")
+        logger.info(f"Added {len(created_rows)} rows to sheet {self._sheet_label(sheet_ref, sheet_id)}")
         return created_rows
     
     # ============== Convenience Methods ==============
@@ -877,7 +889,7 @@ class SmartsheetClient:
         response = self._make_request("POST", api_url, json=payload)
         result = response.json()
         
-        logger.info(f"Attached URL to row {row_id} in sheet {sheet_id}")
+        logger.info(f"Attached URL to row {row_id} in sheet {self._sheet_label(sheet_ref, sheet_id)}")
         return result.get("result", {})
     
     @retry_with_backoff(max_retries=3)
@@ -941,7 +953,7 @@ class SmartsheetClient:
         response.raise_for_status()
         result = response.json()
         
-        logger.info(f"Attached file '{file_name}' to row {row_id} in sheet {sheet_id}")
+        logger.info(f"Attached file '{file_name}' to row {row_id} in sheet {self._sheet_label(sheet_ref, sheet_id)}")
         return result.get("result", {})
     
     def _download_and_attach_file(
@@ -998,7 +1010,7 @@ class SmartsheetClient:
         upload_response.raise_for_status()
         result = upload_response.json()
         
-        logger.info(f"Downloaded and attached file '{file_name}' to row {row_id}")
+        logger.info(f"Downloaded and attached file '{file_name}' to row {row_id} in sheet {sheet_id}")
         return result.get("result", {})
 
     def refresh_caches(self):

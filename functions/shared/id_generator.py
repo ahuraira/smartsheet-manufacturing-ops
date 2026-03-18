@@ -200,7 +200,7 @@ class SequenceGenerator:
         row_data = {
             ColumnName.CONFIG_KEY: sequence_key.value,
             ColumnName.CONFIG_VALUE: str(initial_value),
-            ColumnName.EFFECTIVE_FROM: datetime.now().strftime("%Y-%m-%d"),
+            ColumnName.EFFECTIVE_FROM: datetime.utcnow().strftime("%Y-%m-%d"),
             ColumnName.CHANGED_BY: "system"
         }
         result = self.client.add_row(SheetName.CONFIG.value, row_data)

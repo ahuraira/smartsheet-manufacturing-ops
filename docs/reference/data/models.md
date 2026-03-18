@@ -288,6 +288,25 @@ class LPOQuantities(BaseModel):
     available_sqm: float  # Calculated: PO - delivered - committed - planned
 ```
 
+### SubmissionResult
+
+Result of a consumption or stock submission.
+
+```python
+class SubmissionResult(BaseModel):
+    trace_id: str
+    processed_submission_id: Optional[str] = None  # Submission ID for polling status
+    warnings: List[Warning] = Field(default_factory=list)
+    errors: List[Error] = Field(default_factory=list)
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `trace_id` | string | Yes | Correlation ID for request tracing |
+| `processed_submission_id` | string | No | Submission ID for polling status via `GET /api/submission/status/{id}` |
+| `warnings` | List[Warning] | No | Non-fatal warnings from processing |
+| `errors` | List[Error] | No | Errors encountered during processing |
+
 ---
 
 ## Related Documentation

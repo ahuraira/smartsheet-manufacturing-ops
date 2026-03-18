@@ -124,6 +124,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
     except Exception as e:
         logger.exception(f"[{trace_id}] Error checking submission status: {e}")
+        try:
+            from shared.audit import create_exception
+            from shared.models import ReasonCode, ExceptionSeverity, ExceptionSource
+            create_exception(
+                client=client,
+                trace_id=trace_id,
+                reason_code=ReasonCode.SYSTEM_ERROR,
+                severity=ExceptionSeverity.CRITICAL,
+                source=ExceptionSource.ALLOCATION,
+                message=f"fn_submission_status unhandled error: {str(e)}",
+            )
+        except Exception:
+            logger.error(f"[{trace_id}] Failed to create exception record")
         return func.HttpResponse(
             json.dumps({
                 "error": {"code": "SERVER_ERROR", "message": str(e)},

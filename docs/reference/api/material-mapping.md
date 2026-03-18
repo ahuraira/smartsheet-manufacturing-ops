@@ -192,6 +192,14 @@ Integrated with Unit Service (v1.6.1) for automatic UOM conversion:
 
 ---
 
+## Implementation Notes
+
+- **Override effective date validation** now uses UTC timestamps (was local time). This ensures consistent behavior across regions and avoids edge cases around midnight in local timezones.
+- **Override cache on API failure**: When the override API call fails, the cache serves stale data with a timestamp reset rather than evicting entries. This avoids hammering the upstream service during outages.
+- **Invalid conversion factors**: Conversion factors sourced from the SAP catalog are now validated on load. Invalid or non-numeric values produce a warning log instead of silently propagating bad data.
+
+---
+
 ## Related Documentation
 
 - [Material Mapping Sheets](../data/sheets-mapping.md) - Sheet schemas (05a-05e)

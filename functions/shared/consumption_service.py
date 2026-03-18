@@ -25,6 +25,9 @@ from datetime import datetime
 
 from .logical_names import Sheet, Column
 from .manifest import get_manifest
+from .models import ActionType, ExceptionSeverity, ExceptionSource, ReasonCode
+from .helpers import parse_float_safe
+from .audit import create_exception, log_user_action
 from .flow_models import (
     ConsumptionSubmission,
     ConsumptionSubmissionFromCard,
@@ -91,7 +94,7 @@ def validate_consumption(
         if alloc_id in submission.allocation_ids:
             found_allocations[alloc_id] = alloc
     
-    # Check all allocations found
+    # Check all allocations found and not already consumed
     for alloc_id in submission.allocation_ids:
         if alloc_id not in found_allocations:
             errors.append(Error(
@@ -99,6 +102,14 @@ def validate_consumption(
                 message=f"Allocation {alloc_id} not found",
                 details={"allocation_id": alloc_id}
             ))
+        else:
+            alloc_status = found_allocations[alloc_id].get(col_alloc_status, "")
+            if alloc_status == "Consumed":
+                errors.append(Error(
+                    code=ErrorCode.ALREADY_SUBMITTED,
+                    message=f"Allocation {alloc_id} is already fully consumed",
+                    details={"allocation_id": alloc_id, "status": alloc_status}
+                ))
     
     # 2. Check variance for each line
     from .allocation_service import aggregate_materials
@@ -117,9 +128,10 @@ def validate_consumption(
                 details={"canonical_code": line.canonical_code}
             ))
             continue
-        
-        # Variance check
-        variance_pct = abs(line.actual_qty - line.allocated_qty) / line.allocated_qty * 100 if line.allocated_qty > 0 else 0
+
+        # Variance check — use system allocation qty, not user-submitted value
+        system_allocated_qty = material_info.allocated_qty
+        variance_pct = abs(line.actual_qty - system_allocated_qty) / system_allocated_qty * 100 if system_allocated_qty > 0 else 0
         
         if variance_pct > VARIANCE_ERROR_PCT:
             errors.append(Error(
@@ -127,7 +139,7 @@ def validate_consumption(
                 message=f"Variance {variance_pct:.1f}% exceeds error threshold ({VARIANCE_ERROR_PCT}%)",
                 details={
                     "canonical_code": line.canonical_code,
-                    "allocated": line.allocated_qty,
+                    "allocated": system_allocated_qty,
                     "actual": line.actual_qty,
                     "variance_pct": variance_pct
                 }
@@ -138,7 +150,7 @@ def validate_consumption(
                 message=f"Variance {variance_pct:.1f}% exceeds warning threshold ({VARIANCE_WARN_PCT}%)",
                 details={
                     "canonical_code": line.canonical_code,
-                    "allocated": line.allocated_qty,
+                    "allocated": system_allocated_qty,
                     "actual": line.actual_qty,
                     "variance_pct": variance_pct
                 }
@@ -181,8 +193,8 @@ def parse_card_data_to_submission(client, raw: ConsumptionSubmissionFromCard, tr
         if actual_key in card_data or accessories_key in card_data:
             allocation_ids.add(alloc_id)
             
-            actual_raw_qty = float(card_data.get(actual_key) or 0)
-            accessories_raw_qty = float(card_data.get(accessories_key) or 0)
+            actual_raw_qty = parse_float_safe(card_data.get(actual_key), default=0.0)
+            accessories_raw_qty = parse_float_safe(card_data.get(accessories_key), default=0.0)
             
             # Convert raw_qty back to SAP system qty proportionally
             if detail.raw_qty > 0 and detail.sap_qty > 0:
@@ -199,6 +211,9 @@ def parse_card_data_to_submission(client, raw: ConsumptionSubmissionFromCard, tr
                 actual_qty=actual_sap_qty,
                 accessories_qty=accessories_sap_qty,
                 uom=detail.sap_uom,
+                raw_qty=actual_raw_qty,
+                accessories_raw_qty=accessories_raw_qty,
+                raw_uom=detail.raw_uom,
                 remarks=global_remarks
             ))
             
@@ -321,7 +336,7 @@ def submit_consumption(
         for row in cons_rows:
             alloc_ref = row.get(col_cons_alloc_id)
             if alloc_ref in alloc_ids_set:
-                qty = float(row.get(col_cons_qty) or 0)
+                qty = parse_float_safe(row.get(col_cons_qty), default=0.0)
                 consumed_by_alloc[alloc_ref] = consumed_by_alloc.get(alloc_ref, 0.0) + qty
 
         # Create consumption rows
@@ -329,13 +344,25 @@ def submit_consumption(
         rows_to_add = []
         new_consumption_by_alloc = {}
         
-        tag_id = list(tag_ids)[0] if tag_ids else ""
+        tag_id = sorted(tag_ids)[0] if tag_ids else ""
         
         inventory_txns = []
         
         for line in submission.lines:
             alloc_id = alloc_id_by_material.get(line.canonical_code, "")
             if not alloc_id:
+                logger.warning(f"[{trace_id}] Material '{line.canonical_code}' has no matching allocation — skipping consumption line")
+                try:
+                    create_exception(
+                        client=client, trace_id=trace_id,
+                        reason_code=ReasonCode.SYSTEM_ERROR,
+                        severity=ExceptionSeverity.MEDIUM,
+                        source=ExceptionSource.ALLOCATION,
+                        material_code=line.canonical_code,
+                        message=f"Material '{line.canonical_code}' has no matching allocation during consumption"
+                    )
+                except Exception:
+                    pass
                 continue
                 
             new_consumption_by_alloc[alloc_id] = new_consumption_by_alloc.get(alloc_id, 0.0)
@@ -348,10 +375,13 @@ def submit_consumption(
                     Column.CONSUMPTION_LOG.TAG_SHEET_ID: tag_id,
                     Column.CONSUMPTION_LOG.STATUS: "Submitted",
                     Column.CONSUMPTION_LOG.CONSUMPTION_TYPE: "PRODUCTION",
-                    Column.CONSUMPTION_LOG.CONSUMPTION_DATE: datetime.now().date().isoformat(),
+                    Column.CONSUMPTION_LOG.CONSUMPTION_DATE: datetime.utcnow().date().isoformat(),
                     Column.CONSUMPTION_LOG.SHIFT: submission.shift,
                     Column.CONSUMPTION_LOG.MATERIAL_CODE: line.canonical_code,
                     Column.CONSUMPTION_LOG.QUANTITY: line.actual_qty,
+                    Column.CONSUMPTION_LOG.UOM: line.uom,
+                    Column.CONSUMPTION_LOG.RAW_QUANTITY: line.raw_qty,
+                    Column.CONSUMPTION_LOG.RAW_UOM: line.raw_uom,
                     Column.CONSUMPTION_LOG.ALLOCATION_ID: alloc_id,
                     Column.CONSUMPTION_LOG.REMARKS: f"Trace: {trace_id} | {line.remarks or ''}",
                 }
@@ -366,10 +396,13 @@ def submit_consumption(
                     Column.CONSUMPTION_LOG.TAG_SHEET_ID: tag_id,
                     Column.CONSUMPTION_LOG.STATUS: "Submitted",
                     Column.CONSUMPTION_LOG.CONSUMPTION_TYPE: "ACCESSORY",
-                    Column.CONSUMPTION_LOG.CONSUMPTION_DATE: datetime.now().date().isoformat(),
+                    Column.CONSUMPTION_LOG.CONSUMPTION_DATE: datetime.utcnow().date().isoformat(),
                     Column.CONSUMPTION_LOG.SHIFT: submission.shift,
                     Column.CONSUMPTION_LOG.MATERIAL_CODE: line.canonical_code,
                     Column.CONSUMPTION_LOG.QUANTITY: line.accessories_qty,
+                    Column.CONSUMPTION_LOG.UOM: line.uom,
+                    Column.CONSUMPTION_LOG.RAW_QUANTITY: line.accessories_raw_qty,
+                    Column.CONSUMPTION_LOG.RAW_UOM: line.raw_uom,
                     Column.CONSUMPTION_LOG.ALLOCATION_ID: alloc_id,
                     Column.CONSUMPTION_LOG.REMARKS: f"Trace: {trace_id} | {line.remarks or ''}",
                 }
@@ -414,13 +447,33 @@ def submit_consumption(
                 
             client.add_rows_bulk(Sheet.CONSUMPTION_LOG, formatted_rows)
             logger.info(f"[{trace_id}] Added {len(formatted_rows)} consumption rows")
-        
+            try:
+                log_user_action(
+                    client=client, user_id=submission.user if hasattr(submission, 'user') else "system",
+                    action_type=ActionType.CONSUMPTION_SUBMITTED,
+                    target_table="CONSUMPTION_LOG", target_id=trace_id,
+                    notes=f"Submitted {len(formatted_rows)} consumption rows",
+                    trace_id=trace_id
+                )
+            except Exception as ua_err:
+                logger.warning(f"[{trace_id}] Failed to log user action: {ua_err}")
+
         # Log negative INVENTORY_TXN_LOG entries representing the physical consumption issue
         if inventory_txns:
             try:
                 log_inventory_transactions_batch(client, inventory_txns, trace_id=trace_id)
             except Exception as e:
                 logger.error(f"[{trace_id}] Failed to dispatch INVENTORY_TXN_LOG batch: {e}")
+                try:
+                    create_exception(
+                        client=client, trace_id=trace_id,
+                        reason_code=ReasonCode.SYSTEM_ERROR,
+                        severity=ExceptionSeverity.CRITICAL,
+                        source=ExceptionSource.ALLOCATION,
+                        message=f"Failed to log inventory transactions: {str(e)[:500]}"
+                    )
+                except Exception:
+                    pass
 
         # Update Allocation Status based on 80% rule
         alloc_updates = {}
@@ -429,7 +482,7 @@ def submit_consumption(
         for alloc in all_allocations:
             alloc_id = alloc.get(col_alloc_id)
             if alloc_id in new_consumption_by_alloc:
-                allocated_qty = float(alloc.get(col_alloc_qty) or 0)
+                allocated_qty = parse_float_safe(alloc.get(col_alloc_qty), default=0.0)
                 previously_consumed = consumed_by_alloc.get(alloc_id, 0.0)
                 newly_consumed = new_consumption_by_alloc.get(alloc_id, 0.0)
                 total_consumed = previously_consumed + newly_consumed
@@ -499,6 +552,57 @@ def submit_consumption(
                     for tag_row_id, updates in tag_updates.items():
                         client.update_row(Sheet.TAG_REGISTRY, tag_row_id, updates)
                     logger.info(f"[{trace_id}] Marked {len(tag_updates)} Tag Sheets as Complete")
+                    try:
+                        for t_row_id in tag_updates:
+                            log_user_action(
+                                client=client, user_id="system",
+                                action_type=ActionType.TAG_UPDATED,
+                                target_table="TAG_REGISTRY", target_id=str(t_row_id),
+                                new_value="Complete",
+                                trace_id=trace_id
+                            )
+                    except Exception as ua_err:
+                        logger.warning(f"[{trace_id}] Failed to log tag completion action: {ua_err}")
+
+                    # Trigger the DO Margin Approval Flow dynamically for completed tags
+                    from .margin_orchestrator import MarginOrchestrator
+                    orchestrator = MarginOrchestrator(client)
+                    
+                    for tag_row_id, updates in tag_updates.items():
+                        if updates.get(Column.TAG_REGISTRY.STATUS) == "Complete":
+                            # We need to extract LPO SAP Reference and Delivered SQM
+                            # Re-find the exact tag_row from tag_registry_rows using row_id
+                            tr_row = next((r for r in tag_registry_rows if str(r.get("row_id")) == str(tag_row_id)), None)
+                            if tr_row:
+                                c_lpo = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.LPO_SAP_REFERENCE)
+                                c_sqm = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.TOTAL_AREA_SQM)
+                                c_id = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.TAG_ID)
+                                
+                                lpo_ref = tr_row.get(c_lpo, "")
+                                sqm_val = tr_row.get(c_sqm, 0.0)
+                                t_id = tr_row.get(c_id, "")
+                                
+                                try:
+                                    orchestrator.trigger_margin_approval_for_tag(
+                                        tag_sheet_id=str(t_id),
+                                        delivered_sqm=parse_float_safe(sqm_val, default=0.0),
+                                        lpo_sap_ref=str(lpo_ref),
+                                        trace_id=trace_id
+                                    )
+                                except Exception as me:
+                                    logger.error(f"[{trace_id}] Margin orchestrator failed for {t_id}: {me}")
+                                    try:
+                                        create_exception(
+                                            client=client,
+                                            trace_id=trace_id,
+                                            reason_code=ReasonCode.SYSTEM_ERROR,
+                                            severity=ExceptionSeverity.MEDIUM,
+                                            source=ExceptionSource.ALLOCATION,
+                                            related_tag_id=str(t_id),
+                                            message=f"Margin approval trigger failed: {str(me)[:500]}",
+                                        )
+                                    except Exception:
+                                        logger.error(f"[{trace_id}] Failed to create exception record for margin failure")
             
             except Exception as e:
                 logger.error(f"[{trace_id}] Failed to update Tag Sheet statuses: {str(e)}")

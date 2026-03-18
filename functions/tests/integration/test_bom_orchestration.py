@@ -92,8 +92,8 @@ class TestBOMOrchestration:
         
         mock_map = MockMappingService.return_value
         mock_map.lookup.return_value = MappingResult(
-            success=True, decision="AUTO", 
-            uom="m", conversion_factor=30.0
+            success=True, decision="AUTO",
+            uom="m", sap_uom="m", conversion_factor=30.0
         )
         
         orchestrator = BOMOrchestrator(MagicMock())

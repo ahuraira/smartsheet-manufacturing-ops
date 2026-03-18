@@ -44,6 +44,7 @@ from shared import (
     # Percentage normalization (v1.6.7)
     normalize_percentage,
 )
+from shared.helpers import parse_float_safe
 from ..models import RowEvent, DispatchResult
 
 logger = logging.getLogger(__name__)
@@ -83,10 +84,17 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
         )
         if existing:
             # Get LPO ID from physical column name
-            sap_ref_col = manifest.get_column_name("LPO_MASTER", "SAP_REFERENCE") or "SAP Reference"
+            sap_ref_col = manifest.get_column_name("LPO_MASTER", "SAP_REFERENCE")
+            if not sap_ref_col:
+                logger.error(f"[{trace_id}] LPO_MASTER.SAP_REFERENCE not found in manifest")
+                return DispatchResult(
+                    status="ERROR",
+                    handler="lpo_ingest",
+                    message="LPO_MASTER.SAP_REFERENCE not found in manifest",
+                    trace_id=trace_id
+                )
             existing_lpo_id = (
                 existing.get(sap_ref_col) or
-                existing.get("SAP Reference") or
                 existing.get("id")
             )
             logger.info(f"[{trace_id}] DEDUP: Staging row {event.row_id} already processed as {existing_lpo_id}")
@@ -149,8 +157,8 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
                 customer_name=customer_name or "",
                 project_name=project_name or "",
                 brand=brand or "KIMMCO",
-                po_quantity_sqm=float(po_quantity or 0),
-                price_per_sqm=float(price_per_sqm or 0),
+                po_quantity_sqm=parse_float_safe(po_quantity, default=0.0),
+                price_per_sqm=parse_float_safe(price_per_sqm, default=0.0),
                 # Optional fields
                 customer_lpo_ref=customer_lpo_ref,
                 terms_of_payment=terms_of_payment or "30 Days Credit",

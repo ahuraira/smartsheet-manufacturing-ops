@@ -101,6 +101,8 @@ flowchart TD
 |------|----------|-------------|------------|
 | `SHORTAGE` | HIGH | Insufficient inventory | Review stock or use remnants |
 | `PICK_NEGATIVE` | CRITICAL | Would cause negative stock | Investigate discrepancy |
+| `ALREADY_SUBMITTED` | MEDIUM | Consumption submitted against a fully consumed allocation | Verify allocation status before resubmitting |
+| `LOCK_TIMEOUT` | HIGH | Distributed lock could not be acquired (used in `fn_confirm_submission` and other concurrent endpoints) | Retry after a brief delay; check for stuck locks if persistent |
 
 ### Production Exceptions
 

@@ -181,6 +181,48 @@ Generate SHA-256 hash for multi-file deduplication.
 
 ---
 
+## Consumption Service
+
+Handles material consumption recording and variance tracking.
+
+**Module:** `functions/shared/consumption_service.py`
+
+### Key Behaviors
+
+- **Variance calculation**: Variance is calculated from system allocation quantity (not user-submitted quantity)
+- **Consumed rejection**: Allocations with status "Consumed" are rejected to prevent double-processing
+- **Unmapped material logging**: Unmapped materials now log warnings instead of being silently skipped
+- **Exception creation on margin failure**: Margin orchestrator failures create exception records in the Exception Log
+
+---
+
+## Queue Lock
+
+Distributed lock for serializing concurrent operations.
+
+**Module:** `functions/shared/queue_lock.py`
+
+### Key Behaviors
+
+- **Default timeout**: 60 seconds (updated from 30s)
+- **`is_likely_held()` method**: Check if the lock is likely held by another process without attempting acquisition
+
+---
+
+## Mapping Service
+
+Material code mapping with caching.
+
+**Module:** `functions/shared/mapping_service.py`
+
+### Key Behaviors
+
+- **Timezone fix**: Timestamps are now consistently handled in UTC
+- **Stale cache fix**: Cache invalidation corrected to prevent serving outdated mappings
+- **Conversion factor logging**: Conversion factor lookups are now logged for traceability
+
+---
+
 ## Related Documentation
 
 - [Data Models](./models.md) - LPOQuantities, FileUploadItem schemas

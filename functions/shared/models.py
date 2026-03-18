@@ -263,8 +263,8 @@ class ScheduleTagResponse(BaseModel):
 
 class ExceptionRecord(BaseModel):
     """Exception log record."""
-    exception_id: str = Field(default_factory=lambda: f"EX-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}")
-    created_at: datetime = Field(default_factory=datetime.now)
+    exception_id: str = Field(default_factory=lambda: f"EX-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     source: ExceptionSource
     related_tag_id: Optional[str] = None
     related_txn_id: Optional[str] = None

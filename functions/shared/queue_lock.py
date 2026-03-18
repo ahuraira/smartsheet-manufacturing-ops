@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # Queue configuration
 LOCK_QUEUE_NAME = "allocation-locks"
-DEFAULT_TIMEOUT_MS = 30000  # 30 seconds
+DEFAULT_TIMEOUT_MS = 60000  # 60 seconds — allows for slow Smartsheet API calls
 MAX_TIMEOUT_MS = 300000  # 5 minutes (Azure Queue max visibility timeout: 7 days, but we use shorter)
 
 
@@ -57,9 +57,23 @@ class LockHandle:
     queue_client: Optional[QueueClient] = None
     error_message: Optional[str] = None
     error_code: Optional[str] = None
-    
+    acquired_at: float = 0.0  # time.monotonic() when lock was acquired
+    timeout_ms: int = DEFAULT_TIMEOUT_MS
+
     def __bool__(self):
         return self.success
+
+    def is_likely_held(self) -> bool:
+        """Check if the lock is likely still held (elapsed time < timeout).
+
+        WARNING: This is a best-effort check. The actual lock is managed by
+        Azure Queue visibility timeout, and clock drift or delays can cause
+        the lock to expire before this method returns False.
+        """
+        if not self.success or self.acquired_at == 0.0:
+            return False
+        elapsed_ms = (time.monotonic() - self.acquired_at) * 1000
+        return elapsed_ms < self.timeout_ms
 
 
 def _get_queue_client() -> QueueClient:
@@ -148,7 +162,9 @@ def acquire_allocation_lock(
             allocation_ids=allocation_ids,
             message_ids=message_ids,
             pop_receipts=pop_receipts,
-            queue_client=queue_client
+            queue_client=queue_client,
+            acquired_at=time.monotonic(),
+            timeout_ms=timeout_ms
         )
         
     except Exception as e:
@@ -175,7 +191,16 @@ def release_allocation_lock(lock_handle: LockHandle, trace_id: str = "") -> bool
     if not lock_handle.success or not lock_handle.message_ids:
         logger.warning(f"[{trace_id}] Invalid lock handle, nothing to release")
         return False
-    
+
+    # Warn if lock may have already expired
+    if not lock_handle.is_likely_held():
+        elapsed_ms = (time.monotonic() - lock_handle.acquired_at) * 1000 if lock_handle.acquired_at else 0
+        logger.warning(
+            f"[{trace_id}] Lock may have expired before release — "
+            f"elapsed {elapsed_ms:.0f}ms exceeds timeout {lock_handle.timeout_ms}ms. "
+            f"Another process may have acquired these allocations."
+        )
+
     success_count = 0
     
     for i, (msg_id, pop_receipt) in enumerate(zip(lock_handle.message_ids, lock_handle.pop_receipts)):
@@ -203,7 +228,13 @@ def release_allocation_lock(lock_handle: LockHandle, trace_id: str = "") -> bool
 class AllocationLock:
     """
     Context manager for allocation locks.
-    
+
+    WARNING: This lock relies on Azure Queue visibility timeout. The lock is
+    NOT automatically renewed. If your critical section may exceed timeout_ms,
+    increase the timeout. If the process crashes, the lock auto-releases after
+    the timeout — this is crash-safe but means long-running work can lose
+    exclusivity.
+
     Usage:
         with AllocationLock(["A-123", "A-124"], trace_id=trace_id) as lock:
             if not lock.success:

@@ -266,7 +266,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             updates[Column.LPO_MASTER.REMARKS] = request.remarks
         
         # Always update timestamp
-        updates[Column.LPO_MASTER.UPDATED_AT] = format_datetime_for_smartsheet(datetime.now())
+        updates[Column.LPO_MASTER.UPDATED_AT] = format_datetime_for_smartsheet(datetime.utcnow())
         
         if not updates:
             return func.HttpResponse(

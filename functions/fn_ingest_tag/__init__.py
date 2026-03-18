@@ -402,7 +402,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             Column.TAG_REGISTRY.CLIENT_REQUEST_ID: request.client_request_id,
             
             # Reception info
-            Column.TAG_REGISTRY.DATE_TAG_SHEET_RECEIVED: format_datetime_for_smartsheet(datetime.now()),
+            Column.TAG_REGISTRY.DATE_TAG_SHEET_RECEIVED: format_datetime_for_smartsheet(datetime.utcnow()),
             Column.TAG_REGISTRY.RECEIVED_THROUGH: request.received_through,
             Column.TAG_REGISTRY.SUBMITTED_BY: submitted_by_email,  # v1.6.8: Resolved email
             

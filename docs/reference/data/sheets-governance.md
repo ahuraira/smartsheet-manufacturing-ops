@@ -82,6 +82,27 @@ See [ReasonCode enum](./enums.md#reasoncode) for complete list including:
 
 ---
 
+## Margin Approval Log
+
+Stores pending and resolved margin approval records for the DO Margin workflow.
+
+| Logical Name | Physical Column | Type | Description |
+|--------------|-----------------|------|-------------|
+| `APPROVAL_ID` | Approval ID | Text (Auto) | Auto-generated approval ID |
+| `TAG_SHEET_ID` | Tag Sheet ID | Text | Related tag sheet identifier |
+| `LPO_ID` | LPO ID | Text | Linked LPO identifier |
+| `MATERIAL_COST_AED` | Material Cost (AED) | Number | Material cost in AED |
+| `OTHER_COSTS_AED` | Other Costs (AED) | Number | Other costs in AED |
+| `GM_EXC_TAX_PCT` | GM Exc Tax (%) | Number | Gross margin excluding tax percentage |
+| `CORP_TAX_AED` | Corp Tax (AED) | Number | Corporate tax in AED |
+| `TARGET_MARGIN_VARIANCE_PCT` | Target Margin Variance (%) | Number | Variance from target margin percentage |
+| `STATUS` | Status | Dropdown | Approval status (e.g., PENDING, APPROVED, REJECTED) |
+| `CLIENT_REQUEST_ID` | Client Request ID | Text (Unique) | Idempotency key |
+| `CARD_JSON` | Card JSON | Text (Long) | Adaptive card JSON payload |
+| `CREATED_AT` | Created At | Date/Time | Record creation timestamp |
+
+---
+
 ## Related Documentation
 
 - [Enumerations](./enums.md) - ActionType, ReasonCode, ExceptionSeverity

@@ -175,16 +175,21 @@ class BOMOrchestrator:
                 line.history_id = result.history_id
                 
                 # Apply conversion using UnitService
-                if result.sap_uom and result.conversion_factor:
-                    from shared.unit_service import UnitService
-                    
-                    line.canonical_quantity = UnitService.convert(
-                        quantity=line.quantity, 
-                        from_uom=line.uom, 
-                        to_uom=result.sap_uom, 
-                        conversion_factor=result.conversion_factor
-                    )
-                    line.canonical_uom = result.sap_uom
+                if result.sap_uom and result.conversion_factor is not None:
+                    if result.conversion_factor > 0:
+                        from shared.unit_service import UnitService
+
+                        line.canonical_quantity = UnitService.convert(
+                            quantity=line.quantity,
+                            from_uom=line.uom,
+                            to_uom=result.sap_uom,
+                            conversion_factor=result.conversion_factor
+                        )
+                        line.canonical_uom = result.sap_uom
+                    else:
+                        logger.warning(
+                            f"[{trace_id}] Zero conversion factor for SAP code {result.sap_code} — skipping conversion"
+                        )
                 
             except Exception as e:
                 logger.warning(

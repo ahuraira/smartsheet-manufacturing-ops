@@ -166,7 +166,7 @@ def calculate_sla_due(severity: ExceptionSeverity, created_at: Optional[datetime
     - MEDIUM: +48 hours
     - LOW: +72 hours
     """
-    base_time = created_at or datetime.now()
+    base_time = created_at or datetime.utcnow()
     
     sla_hours = {
         ExceptionSeverity.CRITICAL: 4,

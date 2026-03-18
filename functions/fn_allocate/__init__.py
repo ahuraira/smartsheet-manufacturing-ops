@@ -165,6 +165,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as e:
         logger.error(f"[{trace_id}] Allocation failed: {traceback.format_exc()}")
+        try:
+            from shared.audit import create_exception
+            from shared.models import ReasonCode, ExceptionSeverity, ExceptionSource
+            create_exception(
+                client=client, trace_id=trace_id,
+                reason_code=ReasonCode.SYSTEM_ERROR,
+                severity=ExceptionSeverity.CRITICAL,
+                source=ExceptionSource.ALLOCATION,
+                message=f"fn_allocate unhandled error: {str(e)[:500]}"
+            )
+        except Exception:
+            logger.error(f"[{trace_id}] Failed to create exception record")
         return func.HttpResponse(
             json.dumps({
                 "error": f"Allocation failed: {str(e)}",

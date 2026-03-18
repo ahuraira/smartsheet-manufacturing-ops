@@ -78,7 +78,7 @@ def create_exception(
             logger.warning(f"[{trace_id}] Exception dedup check failed: {e} - proceeding with creation")
     
     exception_id = generate_next_exception_id(client)
-    now = datetime.now()
+    now = datetime.utcnow()
     
     exception_data = {
         Column.EXCEPTION_LOG.EXCEPTION_ID: exception_id,
@@ -168,7 +168,7 @@ def log_user_action(
     
     action_data = {
         Column.USER_ACTION_LOG.ACTION_ID: action_id,
-        Column.USER_ACTION_LOG.TIMESTAMP: format_datetime_for_smartsheet(datetime.now()),
+        Column.USER_ACTION_LOG.TIMESTAMP: format_datetime_for_smartsheet(datetime.utcnow()),
         Column.USER_ACTION_LOG.USER_ID: user_id,
         Column.USER_ACTION_LOG.ACTION_TYPE: action_type.value,
         Column.USER_ACTION_LOG.TARGET_TABLE: target_table_str,

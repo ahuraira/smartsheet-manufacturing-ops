@@ -56,6 +56,7 @@ class Sheet:
     ALLOCATION_LOG = "ALLOCATION_LOG"
     
     # 04. Production and Delivery
+    MARGIN_APPROVAL_LOG = "MARGIN_APPROVAL_LOG"
     CONSUMPTION_LOG = "CONSUMPTION_LOG"
     REMNANT_LOG = "REMNANT_LOG"
     FILLER_LOG = "FILLER_LOG"
@@ -150,6 +151,7 @@ class Column:
         NUMBER_OF_DELIVERIES = "NUMBER_OF_DELIVERIES"
         SOURCE_FILE_HASH = "SOURCE_FILE_HASH"
         CLIENT_REQUEST_ID = "CLIENT_REQUEST_ID"
+        MARGIN_PCT = "MARGIN_PCT"
         FOLDER_URL = "FOLDER_URL"
         CREATED_BY = "CREATED_BY"
         UPDATED_AT = "UPDATED_AT"
@@ -204,6 +206,7 @@ class Column:
         REMARKS = "REMARKS"
         FILE_HASH = "FILE_HASH"
         CLIENT_REQUEST_ID = "CLIENT_REQUEST_ID"
+        TOTAL_AREA_SQM = "TOTAL_AREA_SQM"
     
     class TAG_SHEET_STAGING:
         """02h Tag Sheet Staging columns."""
@@ -405,6 +408,21 @@ class Column:
         RAW_QUANTITY = "RAW_QUANTITY"        # Physical quantity (e.g. 100) — for production team
         RAW_UOM = "RAW_UOM"                  # Physical UOM (e.g. m) — for production team
     
+    class MARGIN_APPROVAL_LOG:
+        """04 Margin Approval Log columns."""
+        APPROVAL_ID = "APPROVAL_ID"
+        TAG_SHEET_ID = "TAG_SHEET_ID"
+        LPO_ID = "LPO_ID"
+        MATERIAL_COST_AED = "MATERIAL_COST_AED"
+        OTHER_COSTS_AED = "OTHER_COSTS_AED"
+        GM_EXC_TAX_PCT = "GM_EXC_TAX_PCT"
+        CORP_TAX_AED = "CORP_TAX_AED"
+        TARGET_MARGIN_VARIANCE_PCT = "TARGET_MARGIN_VARIANCE_PCT"
+        STATUS = "STATUS"
+        CLIENT_REQUEST_ID = "CLIENT_REQUEST_ID"
+        CARD_JSON = "CARD_JSON"
+        CREATED_AT = "CREATED_AT"
+
     class CONSUMPTION_LOG:
         """06 Consumption Log columns."""
         CONSUMPTION_ID = "CONSUMPTION_ID"
@@ -414,6 +432,9 @@ class Column:
         SHIFT = "SHIFT"
         MATERIAL_CODE = "MATERIAL_CODE"
         QUANTITY = "QUANTITY"
+        UOM = "UOM"
+        RAW_QUANTITY = "RAW_QUANTITY"
+        RAW_UOM = "RAW_UOM"
         REMNANT_ID = "REMNANT_ID"
         ALLOCATION_ID = "ALLOCATION_ID"      # Links consumption back to specific allocation row
         CONSUMPTION_TYPE = "CONSUMPTION_TYPE"
@@ -433,6 +454,25 @@ class Column:
         CLIENT_REQUEST_ID = "CLIENT_REQUEST_ID"
 
 
+    class INVENTORY_SNAPSHOT:
+        """91 Inventory Snapshot columns."""
+        MATERIAL_CODE = "MATERIAL_CODE"
+        SYSTEM_CLOSING = "SYSTEM_CLOSING"
+        UOM = "UOM"
+        LAST_COUNT_DATE = "LAST_COUNT_DATE"
+
+    class SAP_INVENTORY_SNAPSHOT:
+        """92 SAP Inventory Snapshot columns."""
+        SAP_SNAPSHOT_ID = "SAP_SNAPSHOT_ID"
+        SNAPSHOT_TIMESTAMP = "SNAPSHOT_TIMESTAMP"
+        MATERIAL_CODE = "MATERIAL_CODE"
+        UOM = "UOM"
+        UNRESTRICTED_QUANTITY = "UNRESTRICTED_QUANTITY"
+        IN_TRANSIT_QUANTITY = "IN_TRANSIT_QUANTITY"
+        WIP_QUANTITY = "WIP_QUANTITY"
+        UNRESTRICTED_VALUE = "UNRESTRICTED_VALUE"
+
+
 # Mapping from Sheet logical name to Column class
 SHEET_COLUMNS = {
     Sheet.CONFIG: Column.CONFIG,
@@ -441,6 +481,7 @@ SHEET_COLUMNS = {
     Sheet.PRODUCTION_PLANNING: Column.PRODUCTION_PLANNING,
     Sheet.NESTING_LOG: Column.NESTING_LOG,
     Sheet.ALLOCATION_LOG: Column.ALLOCATION_LOG,
+    Sheet.MARGIN_APPROVAL_LOG: Column.MARGIN_APPROVAL_LOG,
     Sheet.CONSUMPTION_LOG: Column.CONSUMPTION_LOG,
     Sheet.EXCEPTION_LOG: Column.EXCEPTION_LOG,
     Sheet.USER_ACTION_LOG: Column.USER_ACTION_LOG,
@@ -451,5 +492,7 @@ SHEET_COLUMNS = {
     Sheet.MAPPING_EXCEPTION: Column.MAPPING_EXCEPTION,
     Sheet.PARSED_BOM: Column.PARSED_BOM,
     Sheet.INVENTORY_TXN_LOG: Column.INVENTORY_TXN_LOG,
+    Sheet.INVENTORY_SNAPSHOT: Column.INVENTORY_SNAPSHOT,
+    Sheet.SAP_INVENTORY_SNAPSHOT: Column.SAP_INVENTORY_SNAPSHOT,
 }
 

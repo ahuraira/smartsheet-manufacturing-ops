@@ -19,6 +19,7 @@ from typing import Optional
 
 from .logical_names import Sheet, Column
 from .manifest import get_manifest
+from .helpers import parse_float_safe
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,7 @@ def compute_available_qty(
         # Find latest row for this material (last one wins — rows are appended chronologically)
         for row in reversed(sap_rows):
             if row.get(col_sap_material) == material_code:
-                result.sap_unrestricted = float(row.get(col_sap_unrestricted) or 0)
+                result.sap_unrestricted = parse_float_safe(row.get(col_sap_unrestricted), default=0.0)
                 break
 
     except Exception as e:
@@ -159,7 +160,7 @@ def compute_available_qty(
                 continue
 
             txn_type = row.get(col_txn_type, "")
-            qty = float(row.get(col_txn_qty) or 0)
+            qty = parse_float_safe(row.get(col_txn_qty), default=0.0)
 
             if txn_type in _POSITIVE_TXN_TYPES:
                 result.total_receipts += qty

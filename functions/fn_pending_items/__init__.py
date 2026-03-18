@@ -42,6 +42,7 @@ from shared import (
     PendingItemsResponse,
     TagChoice,
 )
+from shared.helpers import parse_float_safe
 from shared.manifest import get_manifest
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
             allocation_id = row.get(col_alloc_id, "")
             tag_id        = row.get(col_tag_id, "")
-            alloc_qty     = float(row.get(col_qty) or 0)
+            alloc_qty     = parse_float_safe(row.get(col_qty), default=0.0)
             brief         = f"{tag_id} - Allocation {allocation_id}"
 
             pending_tags.append(AllocationSummary(
@@ -156,6 +157,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as e:
         logger.exception(f"[{trace_id}] Error fetching pending items: {e}")
+        try:
+            from shared.audit import create_exception
+            from shared.models import ReasonCode, ExceptionSeverity, ExceptionSource
+            create_exception(
+                client=client,
+                trace_id=trace_id,
+                reason_code=ReasonCode.SYSTEM_ERROR,
+                severity=ExceptionSeverity.CRITICAL,
+                source=ExceptionSource.ALLOCATION,
+                message=f"fn_pending_items unhandled error: {str(e)}",
+            )
+        except Exception:
+            logger.error(f"[{trace_id}] Failed to create exception record")
         return func.HttpResponse(
             json.dumps({"error": {"code": "SERVER_ERROR", "message": str(e)}, "trace_id": trace_id}),
             status_code=500,

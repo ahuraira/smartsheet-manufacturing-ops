@@ -32,6 +32,7 @@ This document provides a complete reference of all configuration options in the 
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
 | `FUNCTIONS_WORKER_RUNTIME` | Azure Functions runtime | `python` |
 | `AzureWebJobsStorage` | Storage connection | Required for Azure |
+| `QUEUE_LOCK_TIMEOUT_MS` | Distributed lock timeout for Azure Queue Storage operations | `60000` (60s) |
 
 ### Webhook Variables (function_adapter)
 
@@ -46,6 +47,7 @@ This document provides a complete reference of all configuration options in the 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `POWER_AUTOMATE_CREATE_FOLDERS_URL` | HTTP trigger URL for folder creation flow | (required) |
+| `POWER_AUTOMATE_MANAGER_APPROVAL_URL` | HTTP trigger URL for dispatching margin approval adaptive cards via `margin_orchestrator.py` | (required) |
 | `FLOW_FIRE_AND_FORGET` | Enable async mode (don't wait for response) | `true` |
 | `FLOW_CONNECT_TIMEOUT` | Connection timeout in seconds | `5` |
 | `FLOW_READ_TIMEOUT` | Read timeout in seconds | `30` |

@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 
 from .logical_names import Sheet, Column
 from .manifest import get_manifest
+from .helpers import parse_float_safe
 from .flow_models import (
     AllocationSummary,
     AggregatedMaterial,
@@ -101,7 +102,7 @@ def get_pending_allocations(
 
         allocation_id = row.get(col_alloc_id, "")
         tag_id        = row.get(col_tag_id, "")
-        alloc_qty     = float(row.get(col_qty) or 0)
+        alloc_qty     = parse_float_safe(row.get(col_qty), default=0.0)
 
         pending.append(AllocationSummary(
             allocation_id=allocation_id,
@@ -176,7 +177,7 @@ def get_allocation_details_by_tag(
     for row in cons_rows:
         alloc_ref = row.get(col_cons_alloc_id)
         if alloc_ref in alloc_ids:
-            qty = float(row.get(col_cons_qty) or 0)
+            qty = parse_float_safe(row.get(col_cons_qty), default=0.0)
             consumed_by_alloc[alloc_ref] = consumed_by_alloc.get(alloc_ref, 0.0) + qty
 
     # ── 4. Build AllocationDetail list ─────────────────────────────
@@ -185,9 +186,9 @@ def get_allocation_details_by_tag(
         alloc_id       = row.get(col_alloc_id, "")
         sap_code       = row.get(col_material, "")
         description    = row.get(col_desc, sap_code)  # Fall back to SAP code if no description
-        sap_qty        = float(row.get(col_qty) or 0)
+        sap_qty        = parse_float_safe(row.get(col_qty), default=0.0)
         sap_uom        = row.get(col_uom, "")
-        raw_qty        = float(row.get(col_raw_qty) or 0)
+        raw_qty        = parse_float_safe(row.get(col_raw_qty), default=0.0)
         raw_uom        = row.get(col_raw_uom, sap_uom)  # Fall back to SAP UOM if no raw UOM
         already_consumed = consumed_by_alloc.get(alloc_id, 0.0)
         remaining      = max(0.0, sap_qty - already_consumed)
@@ -298,7 +299,7 @@ def aggregate_materials(
     uom_by_material: Dict[str, str] = {}
     for row in selected:
         material = row.get(col_material, "")
-        qty      = float(row.get(col_qty) or 0)
+        qty      = parse_float_safe(row.get(col_qty), default=0.0)
         uom      = row.get(col_uom, "")
         if material:
             allocated_by_material[material] = allocated_by_material.get(material, 0.0) + qty
@@ -313,7 +314,7 @@ def aggregate_materials(
     for row in cons_rows:
         if row.get(col_cons_alloc_id) in alloc_id_set or row.get(col_cons_tag) in tag_ids:
             material = row.get(col_cons_mat, "")
-            qty = float(row.get(col_cons_qty) or 0)
+            qty = parse_float_safe(row.get(col_cons_qty), default=0.0)
             if material:
                 consumed_by_material[material] = consumed_by_material.get(material, 0.0) + qty
 
