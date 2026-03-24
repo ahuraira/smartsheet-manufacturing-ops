@@ -141,28 +141,47 @@ def build_do_creation_card(
     approval_row_id: str,
     production_lines: List[Dict[str, Any]] = None,
     accessory_lines: List[Dict[str, Any]] = None,
+    tag_details: List[Dict[str, str]] = None,
+    lpo_details: Dict[str, Any] = None,
+    form_base_url: str = "",
 ) -> Dict[str, Any]:
     """
     Builds a DO creation notification Adaptive Card for Supervisor / Teams channel.
 
-    Contains:
-    - DO summary (LPO, tags, area, margin)
-    - Consumption totals (production qty, accessory qty, combined total)
-    - Consumption breakdown by material (production + accessories separate)
-    - Instructions to create DO in SAP and submit SAP DO# + DO PDF via form
+    Contains all details needed to create DO in SAP:
+    - LPO & customer context
+    - Tag sheet IDs and names
+    - Billed quantity, billed value, price/sqm
+    - Consumption totals (production, accessories, total) for SAP consumption
+    - Material breakdown table (production + accessory + total per material)
+    - Prefilled Smartsheet form link for delivery log submission
     """
+    from urllib.parse import quote
+
     gm_pct = margin_summary.get("adjusted_gm_pct", 0.0)
     total_revenue = margin_summary.get("adjusted_revenue_aed", 0.0)
     total_cost = margin_summary.get("total_cost_aed", 0.0)
     production_lines = production_lines or []
     accessory_lines = accessory_lines or []
+    tag_details = tag_details or [{"id": t, "name": t} for t in tags]
+    lpo = lpo_details or {}
 
-    # Calculate totals
+    price_per_sqm = lpo.get("price_per_sqm", 0.0)
+    billed_value = total_billed_area * price_per_sqm if price_per_sqm else total_revenue
+
+    # Calculate consumption totals
     total_production_qty = sum(l.get("quantity", 0.0) for l in production_lines)
     total_accessory_qty = sum(l.get("quantity", 0.0) for l in accessory_lines)
     total_consumption_qty = total_production_qty + total_accessory_qty
 
-    # ── 1. Header + Summary Facts ────────────────────────────────────────────
+    # Tag display: "TAG-001 (Rev A), TAG-002 (Rev B)"
+    tag_display = ", ".join(
+        f"{t['id']} ({t['name']})" if t.get("name") and t["name"] != t["id"]
+        else t["id"]
+        for t in tag_details
+    )
+
+    # ── 1. Header ──────────────────────────────────────────────────────────
     card_body: List[Dict[str, Any]] = [
         {
             "type": "TextBlock",
@@ -173,99 +192,105 @@ def build_do_creation_card(
         },
         {
             "type": "TextBlock",
-            "text": "Margin approved by Production Manager. Please create the Delivery Order in SAP, then submit the SAP DO# and upload the DO PDF.",
+            "text": "Margin approved. Please create the Delivery Order in SAP using the details below, then submit the SAP DO# via the form link.",
             "wrap": True,
             "spacing": "Medium",
         },
-        {
-            "type": "FactSet",
-            "facts": [
-                {"title": "Delivery ID:", "value": delivery_id},
-                {"title": "LPO Reference:", "value": lpo_reference},
-                {"title": "Tag Sheet(s):", "value": ", ".join(tags)},
-                {"title": "PM Penalty:", "value": f"{penalty_pct}%"},
-                {"title": "Total Billed Area:", "value": f"{total_billed_area:,.2f} sqm"},
-                {"title": "Total Revenue:", "value": f"{total_revenue:,.2f} AED"},
-                {"title": "Total Cost:", "value": f"{total_cost:,.2f} AED"},
-                {"title": "Adjusted Gross Margin:", "value": f"{gm_pct * 100:.2f}%"},
-            ],
-            "spacing": "Medium",
-            "separator": True,
-        },
     ]
 
-    # ── 2. Consumption Summary Totals ─────────────────────────────────────────
+    # ── 2. LPO & Delivery Summary ─────────────────────────────────────────
+    summary_facts = [
+        {"title": "Delivery ID:", "value": delivery_id},
+        {"title": "LPO (SAP Ref):", "value": lpo_reference},
+    ]
+    if lpo.get("customer_lpo_ref"):
+        summary_facts.append({"title": "Customer LPO Ref:", "value": str(lpo["customer_lpo_ref"])})
+    if lpo.get("customer_name"):
+        summary_facts.append({"title": "Customer:", "value": str(lpo["customer_name"])})
+    if lpo.get("project_name"):
+        summary_facts.append({"title": "Project:", "value": str(lpo["project_name"])})
+    if lpo.get("brand"):
+        summary_facts.append({"title": "Brand:", "value": str(lpo["brand"])})
+
+    summary_facts.extend([
+        {"title": "Tag Sheet(s):", "value": tag_display},
+        {"title": "Billed Quantity:", "value": f"{total_billed_area:,.2f} sqm"},
+        {"title": "Price/sqm:", "value": f"{price_per_sqm:,.2f} AED"},
+        {"title": "Billed Value:", "value": f"{billed_value:,.2f} AED"},
+    ])
+    if penalty_pct > 0:
+        summary_facts.append({"title": "PM Penalty:", "value": f"{penalty_pct}%"})
+    summary_facts.append({"title": "Gross Margin:", "value": f"{gm_pct * 100:.2f}%"})
+
     card_body.append({
         "type": "FactSet",
-        "facts": [
-            {"title": "Total Consumption:", "value": f"{total_consumption_qty:,.2f}"},
-            {"title": "Production Qty:", "value": f"{total_production_qty:,.2f} ({len(production_lines)} records)"},
-            {"title": "Accessories Qty:", "value": f"{total_accessory_qty:,.2f} ({len(accessory_lines)} records)"},
-        ],
+        "facts": summary_facts,
         "spacing": "Medium",
         "separator": True,
     })
 
-    # ── 3. Consumption Breakdown by Material ──────────────────────────────────
-    # Aggregate production and accessory by material
+    # ── 3. Consumption Summary (for SAP consumption posting) ──────────────
+    card_body.append({
+        "type": "TextBlock",
+        "text": "SAP Consumption Summary",
+        "weight": "Bolder",
+        "spacing": "Medium",
+        "separator": True,
+    })
+    card_body.append({
+        "type": "FactSet",
+        "facts": [
+            {"title": "Production:", "value": f"{total_production_qty:,.4f} ({len(production_lines)} lines)"},
+            {"title": "Accessories:", "value": f"{total_accessory_qty:,.4f} ({len(accessory_lines)} lines)"},
+            {"title": "Total:", "value": f"{total_consumption_qty:,.4f}"},
+        ],
+    })
+
+    # ── 4. Material Breakdown Table ───────────────────────────────────────
     all_lines = production_lines + accessory_lines
     material_totals: Dict[str, Dict[str, Any]] = {}
     for line in all_lines:
         mat = line.get("material_code", "Unknown")
         if mat not in material_totals:
-            material_totals[mat] = {"production": 0.0, "accessory": 0.0, "uom": line.get("uom", "")}
+            material_totals[mat] = {"production": 0.0, "accessory": 0.0, "total": 0.0, "uom": line.get("uom", "")}
         qty = line.get("quantity", 0.0)
         if line in accessory_lines:
             material_totals[mat]["accessory"] += qty
         else:
             material_totals[mat]["production"] += qty
+        material_totals[mat]["total"] += qty
 
     if material_totals:
         card_body.append({
             "type": "TextBlock",
-            "text": f"Consumption by Material ({len(material_totals)} materials)",
+            "text": f"Material Breakdown ({len(material_totals)} materials)",
             "weight": "Bolder",
             "spacing": "Medium",
             "separator": True,
-            "wrap": True,
         })
         card_body.append({
             "type": "ColumnSet",
             "columns": [
-                {"type": "Column", "width": 5, "items": [
-                    {"type": "TextBlock", "text": "Material", "weight": "Bolder", "size": "Small"}
-                ]},
-                {"type": "Column", "width": 3, "items": [
-                    {"type": "TextBlock", "text": "Production", "weight": "Bolder", "size": "Small"}
-                ]},
-                {"type": "Column", "width": 3, "items": [
-                    {"type": "TextBlock", "text": "Accessory", "weight": "Bolder", "size": "Small"}
-                ]},
-                {"type": "Column", "width": 2, "items": [
-                    {"type": "TextBlock", "text": "UOM", "weight": "Bolder", "size": "Small"}
-                ]},
+                {"type": "Column", "width": 4, "items": [{"type": "TextBlock", "text": "Material", "weight": "Bolder", "size": "Small"}]},
+                {"type": "Column", "width": 2, "items": [{"type": "TextBlock", "text": "Prod", "weight": "Bolder", "size": "Small"}]},
+                {"type": "Column", "width": 2, "items": [{"type": "TextBlock", "text": "Acc", "weight": "Bolder", "size": "Small"}]},
+                {"type": "Column", "width": 2, "items": [{"type": "TextBlock", "text": "Total", "weight": "Bolder", "size": "Small"}]},
+                {"type": "Column", "width": 1, "items": [{"type": "TextBlock", "text": "UOM", "weight": "Bolder", "size": "Small"}]},
             ],
         })
         for mat, info in sorted(material_totals.items()):
             card_body.append({
                 "type": "ColumnSet",
                 "columns": [
-                    {"type": "Column", "width": 5, "items": [
-                        {"type": "TextBlock", "text": str(mat)[:30], "wrap": True, "size": "Small"}
-                    ]},
-                    {"type": "Column", "width": 3, "items": [
-                        {"type": "TextBlock", "text": f"{info['production']:,.2f}", "size": "Small"}
-                    ]},
-                    {"type": "Column", "width": 3, "items": [
-                        {"type": "TextBlock", "text": f"{info['accessory']:,.2f}", "size": "Small"}
-                    ]},
-                    {"type": "Column", "width": 2, "items": [
-                        {"type": "TextBlock", "text": info["uom"], "size": "Small"}
-                    ]},
+                    {"type": "Column", "width": 4, "items": [{"type": "TextBlock", "text": str(mat)[:30], "wrap": True, "size": "Small"}]},
+                    {"type": "Column", "width": 2, "items": [{"type": "TextBlock", "text": f"{info['production']:,.4f}", "size": "Small"}]},
+                    {"type": "Column", "width": 2, "items": [{"type": "TextBlock", "text": f"{info['accessory']:,.4f}", "size": "Small"}]},
+                    {"type": "Column", "width": 2, "items": [{"type": "TextBlock", "text": f"{info['total']:,.4f}", "size": "Small"}]},
+                    {"type": "Column", "width": 1, "items": [{"type": "TextBlock", "text": info["uom"], "size": "Small"}]},
                 ],
             })
 
-    # ── 4. Action Instructions ───────────────────────────────────────────────
+    # ── 5. Actions — prefilled Smartsheet form + instructions ─────────────
     card_body.append({
         "type": "TextBlock",
         "text": "Next Steps",
@@ -276,31 +301,38 @@ def build_do_creation_card(
     card_body.append({
         "type": "TextBlock",
         "text": (
-            "1. Create the Delivery Order in SAP using the details above\n"
-            "2. Click **Submit SAP DO & PDF** below to open the submission form\n"
-            "3. Enter the SAP DO number and upload the DO PDF"
+            "1. Create the Delivery Order in SAP using the consumption details above\n"
+            "2. Click **Submit Delivery Log** to open the prefilled form\n"
+            "3. Enter the SAP DO number and upload the signed DO/POD"
         ),
         "wrap": True,
         "spacing": "Small",
     })
+
+    # Build prefilled form URL
+    actions = []
+    if form_base_url:
+        tag_ids_str = ", ".join(t["id"] for t in tag_details)
+        form_url = (
+            f"{form_base_url}"
+            f"?Tag%20Sheet%20ID={quote(tag_ids_str)}"
+            f"&Quantity={total_billed_area:.2f}"
+            f"&Value={billed_value:.2f}"
+            f"&Lines={len(material_totals)}"
+            f"&Status=Pending%20SAP"
+        )
+        actions.append({
+            "type": "Action.OpenUrl",
+            "title": "Submit Delivery Log",
+            "url": form_url,
+        })
 
     card_json = {
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "type": "AdaptiveCard",
         "version": "1.4",
         "body": card_body,
-        "actions": [
-            {
-                "type": "Action.Submit",
-                "title": "Submit SAP DO & PDF",
-                "data": {
-                    "action": "open_do_submission_form",
-                    "delivery_id": delivery_id,
-                    "lpo_reference": lpo_reference,
-                    "approval_row_id": approval_row_id,
-                },
-            },
-        ],
+        "actions": actions,
     }
 
     return card_json

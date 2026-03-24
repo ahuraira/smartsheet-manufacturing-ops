@@ -146,12 +146,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # 2. Gather Tag Information — use find_row (handles float/string normalization)
         lpo_ref = ""
         tag_smartsheet_ids_to_update = []
+        tag_details = []  # [{id, name}] for the DO card
         col_tr_lpo = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.LPO_SAP_REFERENCE)
+        col_tr_name = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.TAG_NAME)
 
         for t_id in all_tags:
             tag_row = client.find_row(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.TAG_ID, t_id)
             if tag_row:
                 tag_smartsheet_ids_to_update.append(tag_row.get("row_id"))
+                tag_details.append({
+                    "id": t_id,
+                    "name": tag_row.get(col_tr_name, t_id) if col_tr_name else t_id,
+                })
                 if not lpo_ref and col_tr_lpo:
                     lpo_ref = normalize_ref_value(tag_row.get(col_tr_lpo, ""))
 
@@ -179,16 +185,23 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             if sess_val:
                 session_ids.append(str(sess_val))
 
-        # 3b. Resolve LPO area_type (Internal/External) for correct billing area
-        area_type = "External"  # Default
+        # 3b. Resolve LPO details for billing area, DO card, and prefilled form
+        area_type = "External"
+        lpo_details = {}
         try:
             lpo_row = client.find_row(Sheet.LPO_MASTER, Column.LPO_MASTER.SAP_REFERENCE, lpo_ref)
             if lpo_row:
-                col_area_type = manifest.get_column_name(Sheet.LPO_MASTER, Column.LPO_MASTER.AREA_TYPE)
-                if col_area_type:
-                    area_type = lpo_row.get(col_area_type) or "External"
+                _col = lambda c: manifest.get_column_name(Sheet.LPO_MASTER, c) or ""
+                area_type = lpo_row.get(_col(Column.LPO_MASTER.AREA_TYPE)) or "External"
+                lpo_details = {
+                    "customer_name": lpo_row.get(_col(Column.LPO_MASTER.CUSTOMER_NAME), ""),
+                    "project_name": lpo_row.get(_col(Column.LPO_MASTER.PROJECT_NAME), ""),
+                    "brand": lpo_row.get(_col(Column.LPO_MASTER.BRAND), ""),
+                    "price_per_sqm": parse_float_safe(lpo_row.get(_col(Column.LPO_MASTER.PRICE_PER_SQM)), default=0.0),
+                    "customer_lpo_ref": lpo_row.get(_col(Column.LPO_MASTER.CUSTOMER_LPO_REF), ""),
+                }
         except Exception as e:
-            logger.warning(f"[{trace_id}] Could not resolve area_type for LPO {lpo_ref}: {e}")
+            logger.warning(f"[{trace_id}] Could not resolve LPO details for {lpo_ref}: {e}")
 
         # 4. Fetch JSON Blobs and Apply Margin Penalty
         service_client = get_blob_service_client()
@@ -319,39 +332,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         do_blob_path = f"{lpo_ref}/Deliveries/do_{delivery_id}.json"
         upload_json_blob(do_payload, do_blob_path, trace_id)
 
-        # 7. Save SINGLE line to DELIVERY_LOG using logical column names
+        # 7. Resolve approver email (DO NOT create delivery log row here —
+        #    delivery log is created later via fn_delivery_ingest when SAP DO is ready)
         approver = resolve_user_email(client, req_body.get("approver", "system"))
-        delivery_row = {
-            Column.DELIVERY_LOG.DELIVERY_ID: delivery_id,
-            Column.DELIVERY_LOG.TAG_SHEET_ID: ", ".join(all_tags),
-            Column.DELIVERY_LOG.SAP_DO_NUMBER: "PENDING_SAP",
-            Column.DELIVERY_LOG.QUANTITY: total_inflated_area,
-            Column.DELIVERY_LOG.LINES: len(master_do_lines),
-        }
 
-        try:
-            client.add_row(Sheet.DELIVERY_LOG, delivery_row)
-            log_user_action(
-                client=client,
-                user_id=approver,
-                action_type=ActionType.DO_CREATED,
-                target_table="DELIVERY_LOG",
-                target_id=delivery_id,
-                trace_id=trace_id,
-            )
-        except Exception as e:
-            logger.error(f"[{trace_id}] Failed to log to DELIVERY_LOG: {e}")
-            try:
-                create_exception(
-                    client=client,
-                    trace_id=trace_id,
-                    reason_code=ReasonCode.SYSTEM_ERROR,
-                    severity=ExceptionSeverity.HIGH,
-                    source=ExceptionSource.INGEST,
-                    message=f"fn_process_manager_approval: Failed to log to DELIVERY_LOG: {e}",
-                )
-            except Exception:
-                logger.error(f"[{trace_id}] Failed to create exception record")
+        log_user_action(
+            client=client,
+            user_id=approver,
+            action_type=ActionType.DO_CREATED,
+            target_table="MARGIN_APPROVAL_LOG",
+            target_id=delivery_id,
+            notes=f"DO {delivery_id} approved for LPO {lpo_ref}, billed area {total_inflated_area:.2f} sqm",
+            trace_id=trace_id,
+        )
 
         # 8. Update MARGIN_APPROVAL_LOG to "Approved"
         approval_updates = {
@@ -451,6 +444,20 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             logger.warning(f"[{trace_id}] Failed to fetch consumption data for DO card: {e}")
 
         # 11. Send DO Creation Card to Supervisor / Teams Channel
+        import os
+        import requests
+
+        # Get prefilled Smartsheet form URL from config or env
+        delivery_form_url = os.environ.get("DELIVERY_LOG_FORM_URL", "")
+        if not delivery_form_url:
+            try:
+                form_cfg = client.find_row(Sheet.CONFIG, Column.CONFIG.CONFIG_KEY, "DELIVERY_LOG_FORM_URL")
+                if form_cfg:
+                    col_val = manifest.get_column_name(Sheet.CONFIG, Column.CONFIG.CONFIG_VALUE)
+                    delivery_form_url = str(form_cfg.get(col_val, ""))
+            except Exception:
+                pass
+
         try:
             do_card = build_do_creation_card(
                 delivery_id=delivery_id,
@@ -462,10 +469,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 approval_row_id=str(approval_row_id),
                 production_lines=production_lines,
                 accessory_lines=accessory_lines,
+                tag_details=tag_details,
+                lpo_details=lpo_details,
+                form_base_url=delivery_form_url,
             )
-
-            import os
-            import requests
             do_webhook_url = os.environ.get("POWER_AUTOMATE_DO_CREATION_URL", "")
             if not do_webhook_url:
                 # Try reading from config

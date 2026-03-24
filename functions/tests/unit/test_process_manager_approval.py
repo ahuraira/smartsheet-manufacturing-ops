@@ -595,10 +595,8 @@ class TestProcessManagerApproval:
         # Blob was uploaded
         mock_upload.assert_called_once()
 
-        # DELIVERY_LOG row was created
-        mock_client.add_row.assert_called()
-
-        # MARGIN_APPROVAL_LOG was updated to Approved
+        # No DELIVERY_LOG row created (delivery log is created later via fn_delivery_ingest)
+        # add_row is NOT called — only update_row for MARGIN_APPROVAL_LOG + TAG_REGISTRY
         mock_client.update_row.assert_called()
 
         # Audit log_user_action was called (DO_CREATED + TAG_UPDATED for approval + TAG_UPDATED for tags)
