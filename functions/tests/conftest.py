@@ -273,8 +273,9 @@ class MockSmartsheetStorage:
         # Pre-populate config with sequence counters
         config_sheet = self.sheets.get("00a Config")
         if config_sheet:
-            sequences = ["seq_tag", "seq_exception", "seq_allocation", "seq_consumption",
-                        "seq_delivery", "seq_nesting", "seq_remnant", "seq_filler", "seq_txn"]
+            sequences = ["seq_tag", "seq_lpo", "seq_exception", "seq_allocation", "seq_consumption",
+                        "seq_delivery", "seq_nesting", "seq_remnant", "seq_filler", "seq_txn",
+                        "seq_action", "seq_schedule", "seq_approval"]
             for seq in sequences:
                 self._row_counter += 1
                 config_sheet["rows"].append({

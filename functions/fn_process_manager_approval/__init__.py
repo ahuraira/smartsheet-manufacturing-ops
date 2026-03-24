@@ -325,7 +325,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         }
 
         # 5b. Build and Save DO Payload (after margin calc so we can include it)
-        delivery_id = f"DO-{uuid.uuid4().hex[:8].upper()}"
+        from shared.id_generator import generate_next_delivery_id
+        delivery_id = generate_next_delivery_id(client)
         do_payload = {
             "delivery_id": delivery_id,
             "lpo_reference": lpo_ref,

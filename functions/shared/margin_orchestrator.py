@@ -70,7 +70,8 @@ class MarginOrchestrator:
                 pass
 
         # 3. Create MARGIN_APPROVAL_LOG row (Pending)
-        approval_id = f"APV-{uuid.uuid4().hex[:8].upper()}"
+        from .id_generator import generate_next_approval_id
+        approval_id = generate_next_approval_id(self.client)
         client_request_id = str(uuid.uuid4())
         
         # Use add_row() with logical column names — it handles resolution via manifest

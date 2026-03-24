@@ -108,11 +108,10 @@ def _parse_rows(sheet_data: dict) -> list:
     return parsed
 
 
-def _generate_allocation_id() -> str:
-    """Generate a unique allocation ID."""
-    ts = now_uae().strftime("%Y%m%d")
-    short_uuid = uuid.uuid4().hex[:6].upper()
-    return f"ALLOC-{ts}-{short_uuid}"
+def _generate_allocation_id(client) -> str:
+    """Generate a sequential allocation ID (e.g., ALLOC-0001)."""
+    from .id_generator import generate_next_allocation_id
+    return generate_next_allocation_id(client)
 
 
 # ── Main allocation function ────────────────────────────────────────
@@ -239,7 +238,7 @@ def allocate_for_session(
         stock = compute_available_qty(client, sap_code, trace_id=trace_id)
         flag = determine_stock_flag(stock.net_available, need.total_qty)
 
-        alloc_id = _generate_allocation_id()
+        alloc_id = _generate_allocation_id(client)
         alloc_qty = need.total_qty
 
         # For partial availability, only allocate what's available

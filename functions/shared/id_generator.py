@@ -293,3 +293,8 @@ def generate_next_schedule_id(client) -> str:
     return SequenceGenerator(client).next_id(ConfigKey.SEQ_SCHEDULE)
 
 
+def generate_next_approval_id(client) -> str:
+    """Generate next Margin Approval ID (e.g., APV-0001)."""
+    return SequenceGenerator(client).next_id(ConfigKey.SEQ_APPROVAL)
+
+
