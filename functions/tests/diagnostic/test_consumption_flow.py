@@ -496,19 +496,23 @@ class TestMarginOrchestratorColumns:
         with patch.object(orch, "costing_service") as mock_cs:
             mock_cs.calculate_margin.return_value = {
                 "delivered_sqm": 50.0,
+                "eq_accessory_sqm": 5.0,
+                "billable_area_sqm": 55.0,
+                "production_material_cost_aed": 800.0,
+                "accessory_material_cost_aed": 200.0,
                 "material_cost_aed": 1000.0,
                 "fixed_cost_aed": 200.0,
                 "credit_risk_aed": 50.0,
                 "total_cost_aed": 1250.0,
                 "selling_price_per_sqm": 30.0,
-                "total_revenue_aed": 1500.0,
-                "gross_profit_aed": 250.0,
-                "gm_pct": 0.1667,
-                "corp_tax_aed": 22.5,
+                "total_revenue_aed": 1650.0,
+                "gross_profit_aed": 400.0,
+                "gm_pct": 0.2424,
+                "corp_tax_aed": 36.0,
                 "target_margin_pct": 0.15,
-                "required_billing_area": 55.0,
-                "area_variation_pct": 0.10,
-                "suggested_manager_penalty_pct": 10.0,
+                "required_billing_area": 49.0,
+                "area_variation_pct": -0.11,
+                "suggested_manager_penalty_pct": -10.91,
             }
 
             # Mock adaptive card builder and requests (imported locally inside margin_orchestrator)

@@ -709,8 +709,8 @@ class TestProcessManagerApproval:
 
         body = json.loads(result.get_body())
         summary = body["margin_summary"]
-        # 0% penalty -> original == billed
-        assert summary["original_area_sqm"] == summary["billed_area_sqm"]
+        # 0% penalty -> production area == penalised production area
+        assert summary["production_area_sqm"] == summary["penalised_production_area_sqm"]
 
     # -----------------------------------------------------------------------
     # 12. Empty penalty string defaults to 0

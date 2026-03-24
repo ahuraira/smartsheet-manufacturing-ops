@@ -75,17 +75,27 @@ def build_margin_approval_card(
             {
                 "type": "FactSet",
                 "facts": [
-                    { "title": "Delivered Area:", "value": f"{costing_metrics['delivered_sqm']} sqm" },
-                    { "title": "Selling Price (LPO):", "value": f"{costing_metrics['selling_price_per_sqm']} AED/sqm" },
+                    { "title": "Production Area:", "value": f"{costing_metrics['delivered_sqm']:,.2f} sqm" },
+                    { "title": "Eq. Accessory Area:", "value": f"{costing_metrics.get('eq_accessory_sqm', 0):,.2f} sqm" },
+                    { "title": "Billable Area:", "value": f"{costing_metrics.get('billable_area_sqm', costing_metrics['delivered_sqm']):,.2f} sqm" },
+                    { "title": "Price/sqm:", "value": f"{costing_metrics['selling_price_per_sqm']:,.2f} AED" },
                     { "title": "Total Revenue:", "value": f"{costing_metrics['total_revenue_aed']:,.2f} AED" },
-                    { "title": "Material Cost:", "value": f"{costing_metrics['material_cost_aed']:,.2f} AED" },
-                    { "title": "Other Costs (incl Risk):", "value": f"{costing_metrics['fixed_cost_aed'] + costing_metrics['credit_risk_aed']:,.2f} AED" },
-                    { "title": "Corporate Tax (9% approx):", "value": f"{costing_metrics['corp_tax_aed']:,.2f} AED" },
-                    { "title": "Gross Margin (Pre-Tax):", "value": gm_pct_display },
-                    { "title": "Required Margin Variation:", "value": f"Need {variation_pct_display} area bump to hit {target_margin_display} target" }
                 ],
                 "spacing": "Medium",
                 "separator": True
+            },
+            {
+                "type": "FactSet",
+                "facts": [
+                    { "title": "Production Material Cost:", "value": f"{costing_metrics.get('production_material_cost_aed', 0):,.2f} AED" },
+                    { "title": "Accessory Material Cost:", "value": f"{costing_metrics.get('accessory_material_cost_aed', 0):,.2f} AED" },
+                    { "title": "Fixed Cost (Factory):", "value": f"{costing_metrics['fixed_cost_aed']:,.2f} AED" },
+                    { "title": "Credit Risk (1%):", "value": f"{costing_metrics['credit_risk_aed']:,.2f} AED" },
+                    { "title": "Total Cost:", "value": f"{costing_metrics['total_cost_aed']:,.2f} AED" },
+                    { "title": "Gross Margin:", "value": gm_pct_display },
+                    { "title": "Target Margin:", "value": target_margin_display },
+                    { "title": "Variation Needed:", "value": f"{variation_pct_display} area bump to reach target" },
+                ],
             },
             {
                 "type": "TextBlock",

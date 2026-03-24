@@ -122,74 +122,88 @@ class CostingService:
         logger.warning(f"[COSTING] No unit cost found for {material_code} — defaulting to 0.0, margin may be inflated")
         return self._get_config_value(cache_key, 0.0)
 
-    def calculate_material_costs(self, tag_sheet_id: str) -> float:
+    def calculate_material_costs_split(self, tag_sheet_id: str) -> Dict[str, float]:
         """
-        Sums up the actual material costs consumed by this Tag Sheet.
-        Retrieves from CONSUMPTION_LOG.
+        Calculate material costs split by consumption type (PRODUCTION vs ACCESSORY).
+
+        Returns:
+            {"production_cost": float, "accessory_cost": float, "total_cost": float}
         """
         rows = self.client.find_rows(
             sheet_ref=Sheet.CONSUMPTION_LOG,
             column_ref=Column.CONSUMPTION_LOG.TAG_SHEET_ID,
             value=tag_sheet_id
         )
-        
-        total_cost = 0.0
+
         mfst = self.manifest
-        
         col_qty = mfst.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.QUANTITY)
         col_material = mfst.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.MATERIAL_CODE)
-        
+        col_type = mfst.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.CONSUMPTION_TYPE)
+
+        production_cost = 0.0
+        accessory_cost = 0.0
+
         for row in rows:
-            qty_val = row.get(col_qty, 0.0)
+            qty = parse_float_safe(row.get(col_qty, 0.0), default=0.0)
             material_code = row.get(col_material, "")
-            
-            qty = parse_float_safe(qty_val, default=0.0)
-                
+            cons_type = str(row.get(col_type, "")).lower() if col_type else ""
+
             if material_code and qty > 0:
                 unit_cost = self.get_material_unit_cost(str(material_code))
-                total_cost += (qty * unit_cost)
-                
-        return total_cost
+                line_cost = qty * unit_cost
+                if cons_type in ("accessory", "accessories"):
+                    accessory_cost += line_cost
+                else:
+                    production_cost += line_cost
+
+        return {
+            "production_cost": production_cost,
+            "accessory_cost": accessory_cost,
+            "total_cost": production_cost + accessory_cost,
+        }
+
+    def calculate_material_costs(self, tag_sheet_id: str) -> float:
+        """Total material cost (production + accessory). Legacy wrapper."""
+        return self.calculate_material_costs_split(tag_sheet_id)["total_cost"]
 
     def calculate_margin(self, tag_sheet_id: str, delivered_sqm: float, lpo_sap_ref: Optional[str]) -> Dict[str, Any]:
         """
-        Core Margin Calculation Logic conforming strictly to SOTA equations.
-        Returns all computed values required for the Adaptive Card and DB storage.
+        Core Margin Calculation.
+
+        Cost model:
+        - Variable costs = production material cost + accessory material cost (per-tag from consumption)
+        - Fixed costs = factory overhead per sqm (not attributable per-order)
+        - Eq. accessory SQM = accessory_cost / (price_per_sqm × (1 - target_margin))
+          so billing covers both cost AND target margin on accessories
+        - Billable area = production area (delivered_sqm) + eq_accessory_sqm
+        - Revenue = billable_area × price_per_sqm
+        - Total cost = material cost + fixed cost + credit risk
+        - GM% = (revenue - total cost) / revenue
         """
-        # 1. Total Material Cost
-        material_cost = self.calculate_material_costs(tag_sheet_id)
-        
-        # 2. Total Fixed Cost
-        fixed_cost = self.TOTAL_FIXED_COST_PER_SQM * delivered_sqm
-        
-        # 3. Pre-Risk Cost
-        pre_risk_cost = material_cost + fixed_cost
-        
-        # 4. Credit Risk (1%)
-        credit_risk = pre_risk_cost * self.CREDIT_RISK_PCT
-        
-        # 5. Total Cost
-        total_cost = pre_risk_cost + credit_risk
-        
+        # 1. Material costs split by type
+        cost_split = self.calculate_material_costs_split(tag_sheet_id)
+        production_material_cost = cost_split["production_cost"]
+        accessory_material_cost = cost_split["accessory_cost"]
+        total_material_cost = cost_split["total_cost"]
+
         # Fetch LPO specifics
         selling_price_per_sqm = 0.0
         target_margin_pct = self._get_config_value("DEFAULT_MARGIN_PCT", 0.12)
-        
+
         if lpo_sap_ref:
             try:
                 lpo_rows = self.client.find_rows(
                     sheet_ref=Sheet.LPO_MASTER,
-                    column_ref=Column.LPO_MASTER.SAP_REFERENCE,  # Ensure correct fallback or index
+                    column_ref=Column.LPO_MASTER.SAP_REFERENCE,
                     value=lpo_sap_ref
                 )
                 if not lpo_rows:
-                    # Try by Customer LPO ref just in case
                     lpo_rows = self.client.find_rows(
                         sheet_ref=Sheet.LPO_MASTER,
                         column_ref=Column.LPO_MASTER.CUSTOMER_LPO_REF,
                         value=lpo_sap_ref
                     )
-                
+
                 if lpo_rows:
                     mfst = self.manifest
                     col_price = mfst.get_column_name(Sheet.LPO_MASTER, Column.LPO_MASTER.PRICE_PER_SQM)
@@ -199,8 +213,6 @@ class CostingService:
                     price_val = lpo_rows[0].get(col_price, 0.0)
                     selling_price_per_sqm = parse_float_safe(price_val, default=0.0)
 
-                    # Use PLANNED_GM_PCT (user-entered target) as primary,
-                    # fall back to MARGIN_PCT, then config default
                     planned_val = parse_float_safe(
                         lpo_rows[0].get(col_planned_gm) if col_planned_gm else None,
                         default=None
@@ -209,7 +221,6 @@ class CostingService:
                         planned_val = parse_float_safe(lpo_rows[0].get(col_margin), default=None)
 
                     if planned_val is not None:
-                        # Normalize: 12 → 0.12, 0.12 stays 0.12
                         target_margin_pct = planned_val / 100.0 if planned_val > 1.0 else planned_val
             except Exception as e:
                 logger.warning(f"Failed to extract LPO details for {lpo_sap_ref}: {e}")
@@ -225,37 +236,62 @@ class CostingService:
                     pass
 
         if selling_price_per_sqm <= 0.0:
-            logger.warning(f"Could not determine Selling Price for LPO {lpo_sap_ref}. Using Config default for testing.")
+            logger.warning(f"Could not determine Selling Price for LPO {lpo_sap_ref}. Using Config default.")
             selling_price_per_sqm = self._get_config_value("DEFAULT_SELLING_PRICE", 50.0)
-            
-        # 6. Total Revenue
-        total_revenue = delivered_sqm * selling_price_per_sqm
-        
-        # 7. Gross Profit
+
+        # 2. Equivalent accessory SQM — includes target margin on accessories
+        #    eq_acc_sqm = accessory_cost / (price × (1 - target_margin))
+        #    so billing eq_acc_sqm × price covers cost + margin
+        margin_denominator = selling_price_per_sqm * (1.0 - target_margin_pct)
+        if margin_denominator > 0:
+            eq_accessory_sqm = accessory_material_cost / margin_denominator
+        else:
+            eq_accessory_sqm = 0.0
+
+        # 3. Billable area = production area + equivalent accessory area
+        billable_area = delivered_sqm + eq_accessory_sqm
+
+        # 4. Fixed cost (factory overhead — applied on production area only)
+        #    Read from config if available, otherwise use hardcoded default
+        fixed_cost_per_sqm = self._get_config_value("FIXED_COST_PER_SQM", self.TOTAL_FIXED_COST_PER_SQM)
+        fixed_cost = fixed_cost_per_sqm * delivered_sqm
+
+        # 5. Credit risk (1% of all costs)
+        pre_risk_cost = total_material_cost + fixed_cost
+        credit_risk = pre_risk_cost * self.CREDIT_RISK_PCT
+
+        # 6. Total cost
+        total_cost = pre_risk_cost + credit_risk
+
+        # 7. Revenue = billable_area × price_per_sqm
+        total_revenue = billable_area * selling_price_per_sqm
+
+        # 8. Gross Profit & GM%
         gross_profit = total_revenue - total_cost
-        
-        # 8. Gross Margin (GM) %
         gm_pct = (gross_profit / total_revenue) if total_revenue > 0 else 0.0
-        
+
         # 9. Corporate Tax (9%)
         corp_tax = gross_profit * 0.09 if gross_profit > 0 else 0.0
-        
-        # 10. Required Area Variation %
+
+        # 10. Required area variation to hit target margin
         if target_margin_pct < 1.0:
             target_revenue = total_cost / (1.0 - target_margin_pct)
         else:
             target_revenue = total_cost
-            
-        required_billing_area = target_revenue / selling_price_per_sqm if selling_price_per_sqm > 0 else delivered_sqm
-        
-        if delivered_sqm > 0:
-            area_variation_pct = (required_billing_area / delivered_sqm) - 1.0
+        required_billing_area = target_revenue / selling_price_per_sqm if selling_price_per_sqm > 0 else billable_area
+
+        if billable_area > 0:
+            area_variation_pct = (required_billing_area / billable_area) - 1.0
         else:
             area_variation_pct = 0.0
 
         return {
-            "delivered_sqm": delivered_sqm,
-            "material_cost_aed": round(material_cost, 2),
+            "delivered_sqm": round(delivered_sqm, 2),
+            "eq_accessory_sqm": round(eq_accessory_sqm, 2),
+            "billable_area_sqm": round(billable_area, 2),
+            "production_material_cost_aed": round(production_material_cost, 2),
+            "accessory_material_cost_aed": round(accessory_material_cost, 2),
+            "material_cost_aed": round(total_material_cost, 2),
             "fixed_cost_aed": round(fixed_cost, 2),
             "credit_risk_aed": round(credit_risk, 2),
             "total_cost_aed": round(total_cost, 2),
@@ -267,5 +303,5 @@ class CostingService:
             "target_margin_pct": round(target_margin_pct, 4),
             "required_billing_area": round(required_billing_area, 2),
             "area_variation_pct": round(area_variation_pct, 4),
-            "suggested_manager_penalty_pct": round(area_variation_pct * 100, 2)
+            "suggested_manager_penalty_pct": round(area_variation_pct * 100, 2),
         }

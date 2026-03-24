@@ -269,14 +269,16 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 except Exception:
                     logger.error(f"[{trace_id}] Failed to create exception record")
 
-        # 5. Compute original (un-penalised) area for cost calculation
+        # 5. Areas:
+        #    - total_original_area = production area from delivery lines (pre-penalty)
+        #    - total_inflated_area = production area × (1 + penalty%) — penalty on production only
+        #    - eq_accessory_sqm comes from margin calc (accessory cost / (price × (1-margin)))
+        #    - total billable = inflated production area + eq_accessory_sqm
         total_original_area = sum(
             line.get("original_area_m2", 0.0) for line in master_do_lines
         )
 
-        # 6. Recalculate margin
-        # Revenue uses inflated area (what the customer is billed)
-        # Cost uses original area (actual production cost doesn't change with penalty)
+        # 6. Calculate margin using original production area
         from shared.costing_service import CostingService
         from shared.adaptive_card_builder import build_do_creation_card
 
@@ -285,28 +287,37 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             margin_metrics = costing.calculate_margin(
                 tag_sheet_id, total_original_area, lpo_ref
             )
-            # Override revenue with inflated area (penalty-adjusted billing)
+            eq_accessory_sqm = margin_metrics.get("eq_accessory_sqm", 0.0)
             selling_price = margin_metrics.get("selling_price_per_sqm", 0.0)
-            inflated_revenue = total_inflated_area * selling_price
-            inflated_profit = inflated_revenue - margin_metrics["total_cost_aed"]
-            inflated_gm_pct = (inflated_profit / inflated_revenue) if inflated_revenue > 0 else 0.0
 
-            margin_metrics["billed_area_sqm"] = round(total_inflated_area, 2)
-            margin_metrics["original_area_sqm"] = round(total_original_area, 2)
-            margin_metrics["total_revenue_aed"] = round(inflated_revenue, 2)
-            margin_metrics["gross_profit_aed"] = round(inflated_profit, 2)
-            margin_metrics["gm_pct"] = round(inflated_gm_pct, 4)
+            # Billable = penalised production area + eq accessory sqm
+            total_billable_area = total_inflated_area + eq_accessory_sqm
+            total_revenue = total_billable_area * selling_price
+            total_cost = margin_metrics["total_cost_aed"]
+            gross_profit = total_revenue - total_cost
+            gm_pct = (gross_profit / total_revenue) if total_revenue > 0 else 0.0
+
+            margin_metrics["total_revenue_aed"] = round(total_revenue, 2)
+            margin_metrics["gross_profit_aed"] = round(gross_profit, 2)
+            margin_metrics["gm_pct"] = round(gm_pct, 4)
+            margin_metrics["billable_area_sqm"] = round(total_billable_area, 2)
         except Exception as e:
             logger.warning(f"[{trace_id}] Margin recalculation failed, using basic figures: {e}")
+            eq_accessory_sqm = 0.0
+            total_billable_area = total_inflated_area
             margin_metrics = {
                 "total_cost_aed": 0.0,
-                "total_revenue_aed": total_inflated_area * 25.0,  # fallback
+                "total_revenue_aed": 0.0,
                 "gm_pct": 0.0,
+                "eq_accessory_sqm": 0.0,
+                "billable_area_sqm": total_inflated_area,
             }
 
         margin_summary = {
-            "original_area_sqm": round(total_original_area, 2),
-            "billed_area_sqm": round(total_inflated_area, 2),
+            "production_area_sqm": round(total_original_area, 2),
+            "penalised_production_area_sqm": round(total_inflated_area, 2),
+            "eq_accessory_sqm": round(eq_accessory_sqm, 2),
+            "total_billable_area_sqm": round(total_billable_area, 2),
             "penalty_pct": penalty_pct,
             "adjusted_gm_pct": margin_metrics.get("gm_pct", 0.0),
             "adjusted_revenue_aed": margin_metrics.get("total_revenue_aed", 0.0),
@@ -321,8 +332,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "tags_included": all_tags,
             "area_type": area_type,
             "manager_penalty_pct": penalty_pct,
-            "original_area_sqm": round(total_original_area, 2),
-            "total_billed_area": round(total_inflated_area, 2),
+            "production_area_sqm": round(total_original_area, 2),
+            "penalised_production_area_sqm": round(total_inflated_area, 2),
+            "eq_accessory_sqm": round(eq_accessory_sqm, 2),
+            "total_billable_area": round(total_billable_area, 2),
             "margin_summary": margin_summary,
             "delivery_lines": master_do_lines,
             "generated_at": format_datetime_for_smartsheet(now_uae()),
@@ -463,7 +476,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 delivery_id=delivery_id,
                 lpo_reference=lpo_ref,
                 tags=all_tags,
-                total_billed_area=total_inflated_area,
+                total_billed_area=total_billable_area,
                 penalty_pct=penalty_pct,
                 margin_summary=margin_summary,
                 approval_row_id=str(approval_row_id),
