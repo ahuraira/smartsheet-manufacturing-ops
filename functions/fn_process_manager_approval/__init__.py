@@ -10,7 +10,7 @@ from shared.logical_names import Sheet, Column
 from shared.blob_storage import get_blob_service_client, get_container_name, upload_json_blob
 from shared.audit import log_user_action, create_exception
 from shared.models import ActionType, ExceptionSeverity, ExceptionSource, ReasonCode
-from shared.helpers import now_uae, format_datetime_for_smartsheet, parse_float_safe, resolve_user_email
+from shared.helpers import now_uae, format_datetime_for_smartsheet, parse_float_safe, resolve_user_email, normalize_ref_value
 from shared.queue_lock import AllocationLock
 
 logger = logging.getLogger(__name__)
@@ -143,28 +143,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=409, mimetype="application/json"
             )
 
-        # 2. Gather Tag Information
+        # 2. Gather Tag Information — use find_row (handles float/string normalization)
         lpo_ref = ""
-        # We fetch TAG_REGISTRY directly
-        tag_reg_rows = client.get_sheet(Sheet.TAG_REGISTRY).get("rows", [])
-        col_tr_id = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.TAG_ID)
+        tag_smartsheet_ids_to_update = []
         col_tr_lpo = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.LPO_SAP_REFERENCE)
 
-        tag_smartsheet_ids_to_update = []
-
-        for r in tag_reg_rows:
-            row_cells = r.get("cells", [])
-            c_dict = {str(c.get("columnId")): str(c.get("value", "")) for c in row_cells}
-
-            # We need the logical names to columnId mapping
-            cid_tag_id = manifest.get_all_column_ids(Sheet.TAG_REGISTRY).get(col_tr_id)
-            cid_lpo_id = manifest.get_all_column_ids(Sheet.TAG_REGISTRY).get(col_tr_lpo)
-
-            t_id = c_dict.get(str(cid_tag_id), "")
-            if t_id in all_tags:
-                tag_smartsheet_ids_to_update.append(r.get("id"))
-                if not lpo_ref:
-                    lpo_ref = c_dict.get(str(cid_lpo_id), "")
+        for t_id in all_tags:
+            tag_row = client.find_row(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.TAG_ID, t_id)
+            if tag_row:
+                tag_smartsheet_ids_to_update.append(tag_row.get("row_id"))
+                if not lpo_ref and col_tr_lpo:
+                    lpo_ref = normalize_ref_value(tag_row.get(col_tr_lpo, ""))
 
         if not lpo_ref:
             logger.error(f"[{trace_id}] LPO Reference could not be determined for DO creation.")

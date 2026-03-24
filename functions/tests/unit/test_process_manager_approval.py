@@ -111,9 +111,24 @@ def _build_mock_client(
 
     client.find_rows.side_effect = _find_rows
 
-    # find_row — used for LPO_MASTER and CONFIG
+    # Auto-build tag lookup map from tag_reg_sheet
+    _tag_map = {}
+    if tag_reg_sheet:
+        for r in tag_reg_sheet.get("rows", []):
+            cells = {c.get("columnId"): c.get("value") for c in r.get("cells", [])}
+            tid = cells.get(2001, "")
+            lpo = cells.get(2005, "")
+            _tag_map[str(tid)] = {
+                "row_id": r.get("id"),
+                "TAG_REGISTRY__TAG_ID": str(tid),
+                "TAG_REGISTRY__LPO_SAP_REFERENCE": str(lpo),
+            }
+
+    # find_row — used for TAG_REGISTRY, LPO_MASTER and CONFIG
     def _find_row(sheet, col, val):
         sheet_str = str(sheet)
+        if "TAG_REGISTRY" in sheet_str:
+            return _tag_map.get(str(val))
         if "LPO_MASTER" in sheet_str:
             return lpo_row
         if "CONFIG" in sheet_str:
