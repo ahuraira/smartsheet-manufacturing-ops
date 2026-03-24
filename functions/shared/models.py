@@ -406,7 +406,8 @@ class LPOIngestRequest(BaseModel):
     hold_reason: Optional[str] = None
     remarks: Optional[str] = None
     area_type: str = "External"  # Internal or External (for billing calculations, v1.6.6)
-    
+    project_category: Optional[str] = None  # Project category from ingestion sheet
+
     # File attachments (multi-file support)
     files: List[FileAttachment] = Field(default_factory=list)
     
@@ -495,3 +496,86 @@ class LPOUpdateResponse(BaseModel):
     trace_id: str
     message: Optional[str] = None
     exception_id: Optional[str] = None
+
+
+# ============== Delivery Request/Response Models ==============
+
+class DeliveryStatus(str, Enum):
+    """Delivery log status values - must match Smartsheet picklist."""
+    PENDING_SAP = "Pending SAP"
+    SAP_CREATED = "SAP Created"
+    VIRTUAL = "Virtual"
+    POD_UPLOADED = "POD Uploaded"
+    INVOICED = "Invoiced"
+    CLOSED = "Closed"
+
+
+class DeliveryIngestRequest(BaseModel):
+    """Request payload for delivery log ingestion API (create)."""
+    client_request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    # Required fields
+    sap_do_number: str  # SAP Delivery Order number (primary key in staging)
+    tag_sheet_id: str   # Comma-separated tag IDs
+
+    # Optional fields
+    sap_invoice_number: Optional[str] = None
+    status: str = "Pending SAP"
+    lines: Optional[int] = None
+    quantity: Optional[float] = None
+    value: Optional[float] = None
+    vehicle_id: Optional[str] = None
+    remarks: Optional[str] = None
+
+    # File attachments (POD documents)
+    files: List[FileAttachment] = Field(default_factory=list)
+
+    # User info
+    uploaded_by: str = "system"
+
+    # Coerce refs to string (Power Automate may send numeric values)
+    @field_validator('sap_do_number', 'sap_invoice_number', 'tag_sheet_id', 'vehicle_id', mode='before')
+    @classmethod
+    def coerce_refs_to_str(cls, v):
+        if v is None:
+            return v
+        s = str(v).strip()
+        # Strip trailing .0 from float-like strings
+        if "." in s and s.endswith("0"):
+            s = s.rstrip("0").rstrip(".")
+        return s
+
+    def get_all_files(self) -> List[FileAttachment]:
+        """Get all file attachments."""
+        return list(self.files)
+
+
+class DeliveryUpdateRequest(BaseModel):
+    """Request payload for delivery log update API."""
+    client_request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    # Key for lookup — identifies which delivery to update
+    sap_do_number: str  # REQUIRED
+
+    # Updatable fields — only update what's provided
+    sap_invoice_number: Optional[str] = None
+    status: Optional[str] = None
+    vehicle_id: Optional[str] = None
+    remarks: Optional[str] = None
+
+    # File attachments (POD documents to add)
+    files: List[FileAttachment] = Field(default_factory=list)
+
+    # User info
+    updated_by: str = "system"
+
+    # Coerce refs to string
+    @field_validator('sap_do_number', 'sap_invoice_number', 'vehicle_id', mode='before')
+    @classmethod
+    def coerce_refs_to_str(cls, v):
+        if v is None:
+            return v
+        s = str(v).strip()
+        if "." in s and s.endswith("0"):
+            s = s.rstrip("0").rstrip(".")
+        return s

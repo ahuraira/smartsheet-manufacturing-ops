@@ -186,32 +186,24 @@ def parse_card_data_to_submission(client, raw: ConsumptionSubmissionFromCard, tr
     for alloc_id, detail in alloc_map.items():
         actual_key = f"actual_{alloc_id}"
         accessories_key = f"accessories_{alloc_id}"
-        
+
         # Add line if either quantity is present in card data
         if actual_key in card_data or accessories_key in card_data:
             allocation_ids.add(alloc_id)
-            
-            actual_raw_qty = parse_float_safe(card_data.get(actual_key), default=0.0)
-            accessories_raw_qty = parse_float_safe(card_data.get(accessories_key), default=0.0)
-            
-            # Convert raw_qty back to SAP system qty proportionally
-            if detail.raw_qty > 0 and detail.sap_qty > 0:
-                conversion_factor = detail.sap_qty / detail.raw_qty
-                actual_sap_qty = actual_raw_qty * conversion_factor
-                accessories_sap_qty = accessories_raw_qty * conversion_factor
-            else:
-                actual_sap_qty = actual_raw_qty
-                accessories_sap_qty = accessories_raw_qty
-                
+
+            # Card now sends SAP quantities directly (QUANTITY/UOM)
+            actual_sap_qty = parse_float_safe(card_data.get(actual_key), default=0.0)
+            accessories_sap_qty = parse_float_safe(card_data.get(accessories_key), default=0.0)
+
             lines.append(ConsumptionLine(
                 canonical_code=detail.sap_code,
                 allocated_qty=detail.sap_qty,
                 actual_qty=actual_sap_qty,
                 accessories_qty=accessories_sap_qty,
                 uom=detail.sap_uom,
-                raw_qty=actual_raw_qty,
-                accessories_raw_qty=accessories_raw_qty,
-                raw_uom=detail.raw_uom,
+                raw_qty=actual_sap_qty,       # Same as SAP qty for consistency
+                accessories_raw_qty=accessories_sap_qty,
+                raw_uom=detail.sap_uom,
                 remarks=global_remarks
             ))
             
@@ -446,8 +438,10 @@ def submit_consumption(
             client.add_rows_bulk(Sheet.CONSUMPTION_LOG, formatted_rows)
             logger.info(f"[{trace_id}] Added {len(formatted_rows)} consumption rows")
             try:
+                from shared.helpers import resolve_user_email
+                resolved_user = resolve_user_email(client, submission.user if hasattr(submission, 'user') else "system")
                 log_user_action(
-                    client=client, user_id=submission.user if hasattr(submission, 'user') else "system",
+                    client=client, user_id=resolved_user,
                     action_type=ActionType.CONSUMPTION_SUBMITTED,
                     target_table="CONSUMPTION_LOG", target_id=trace_id,
                     notes=f"Submitted {len(formatted_rows)} consumption rows",

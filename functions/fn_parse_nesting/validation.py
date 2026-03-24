@@ -6,6 +6,7 @@ from shared.logical_names import Sheet, Column
 from .models import ValidationResult
 
 from shared.manifest import get_manifest
+from shared.helpers import normalize_ref_value
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +56,9 @@ def validate_tag_exists(client: SmartsheetClient, tag_id: str) -> ValidationResu
             
         # Tag found and unique
         tag_row = rows[0]
-        lpo_ref = get_row_value(tag_row, Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.LPO_SAP_REFERENCE)
-                  
+        raw_lpo_ref = get_row_value(tag_row, Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.LPO_SAP_REFERENCE)
+        lpo_ref = normalize_ref_value(raw_lpo_ref) if raw_lpo_ref is not None else None
+
         return ValidationResult(
             is_valid=True,
             tag_row_id=tag_row.get("id") or tag_row.get("row_id"), # Handle mock vs real variations

@@ -9,10 +9,13 @@ All handlers use ID-based extraction for resilience.
 from .lpo_handler import handle_lpo_ingest, handle_lpo_update
 from .tag_handler import handle_tag_ingest
 from .schedule_handler import handle_schedule_ingest
+from .delivery_handler import handle_delivery_ingest, handle_delivery_update
 
 __all__ = [
     "handle_lpo_ingest",
     "handle_lpo_update",
     "handle_tag_ingest",
     "handle_schedule_ingest",
+    "handle_delivery_ingest",
+    "handle_delivery_update",
 ]

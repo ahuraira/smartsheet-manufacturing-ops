@@ -20,7 +20,7 @@ from shared.manifest import get_manifest
 from shared.logical_names import Sheet, Column
 from shared.audit import log_user_action, create_exception
 from shared.models import ActionType, ReasonCode, ExceptionSeverity, ExceptionSource
-from shared.helpers import format_datetime_for_smartsheet, now_uae
+from shared.helpers import format_datetime_for_smartsheet, now_uae, resolve_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         client = SmartsheetClient()
         manifest = get_manifest()
+        approver = resolve_user_email(client, approver)
 
         # Handle skip
         if action == "skip_sap_overrides":

@@ -59,6 +59,9 @@ class MockWorkspaceManifest:
             "NESTING_LOG": {"id": 1009, "name": "04 Nesting Execution Log"},
             # Alias for physical name lookup in fn_schedule_tag
             "00B_MACHINE_MASTER": {"id": 1007, "name": "00b Machine Master"},
+            # Delivery log sheets
+            "DELIVERY_LOG": {"id": 1010, "name": "07 Delivery Log"},
+            "07H_DELIVERY_LOG_INGESTION": {"id": 1011, "name": "07h Delivery Log Ingestion"},
         }
         
         # Define column mappings per sheet
@@ -172,6 +175,31 @@ class MockWorkspaceManifest:
                 "CLIENT_REQUEST_ID": {"id": 8010, "name": "Client Request ID"},
                 "TRACE_ID": {"id": 8011, "name": "Trace ID"},
                 "REMARKS": {"id": 8012, "name": "Remarks"},
+            },
+            "DELIVERY_LOG": {
+                "DELIVERY_ID": {"id": 10001, "name": "Delivery ID"},
+                "SAP_DO_NUMBER": {"id": 10002, "name": "SAP DO Number"},
+                "TAG_SHEET_ID": {"id": 10003, "name": "Tag Sheet ID"},
+                "SAP_INVOICE_NUMBER": {"id": 10004, "name": "SAP Invoice Number"},
+                "STATUS": {"id": 10005, "name": "Status"},
+                "LINES": {"id": 10006, "name": "Lines"},
+                "QUANTITY": {"id": 10007, "name": "Quantity"},
+                "VALUE": {"id": 10008, "name": "Value"},
+                "VEHICLE_ID": {"id": 10009, "name": "Vehicle ID"},
+                "CREATED_AT": {"id": 10010, "name": "Created At"},
+                "REMARKS": {"id": 10011, "name": "Remarks"},
+            },
+            "07H_DELIVERY_LOG_INGESTION": {
+                "SAP_DO_NUMBER": {"id": 11001, "name": "SAP DO Number"},
+                "TAG_SHEET_ID": {"id": 11002, "name": "Tag Sheet ID"},
+                "SAP_INVOICE_NUMBER": {"id": 11003, "name": "SAP Invoice Number"},
+                "STATUS": {"id": 11004, "name": "Status"},
+                "LINES": {"id": 11005, "name": "Lines"},
+                "QUANTITY": {"id": 11006, "name": "Quantity"},
+                "VALUE": {"id": 11007, "name": "Value"},
+                "VEHICLE_ID": {"id": 11008, "name": "Vehicle ID"},
+                "CREATED_AT": {"id": 11009, "name": "Created At"},
+                "REMARKS": {"id": 11010, "name": "Remarks"},
             },
             "NESTING_LOG": {
                 "NEST_SESSION_ID": {"id": 9001, "name": "Nest Session ID"},
@@ -300,34 +328,54 @@ class MockSmartsheetStorage:
         sheet["rows"].append(row)
         return {"id": self._row_counter}
     
+    @staticmethod
+    def _normalize(value: Any) -> str:
+        """Normalize value for comparison (matches SmartsheetClient behaviour)."""
+        if value is None:
+            return ""
+        s = str(value).strip()
+        if "." in s:
+            stripped = s.rstrip("0").rstrip(".")
+            if stripped:
+                s = stripped
+        return s
+
     def find_rows(self, sheet_ref, column_name: str, value: Any) -> List[Dict]:
         """Find rows by column value."""
         sheet = self._get_sheet(sheet_ref)
-        
+
         # Get column ID
         col_name_to_id = {c["title"]: c["id"] for c in sheet["columns"]}
         col_id = col_name_to_id.get(column_name)
-        
+
         if not col_id:
             return []
-        
+
+        normalized_value = self._normalize(value)
         results = []
         for row in sheet["rows"]:
             for cell in row.get("cells", []):
-                if cell.get("columnId") == col_id and cell.get("value") == value:
-                    # Convert row to dict with column names
-                    row_dict = {"row_id": row["id"]}
-                    # Helper to copy system fields
-                    for key in ["createdAt", "modifiedAt", "rowNumber", "version"]:
-                        if key in row:
-                            row_dict[key] = row[key]
+                if cell.get("columnId") == col_id:
+                    cell_val = cell.get("value")
+                    if cell_val == value or self._normalize(cell_val) == normalized_value:
+                        # Convert row to dict with column names
+                        row_dict = {"row_id": row["id"]}
+                        # Helper to copy system fields
+                        for key in ["createdAt", "modifiedAt", "rowNumber", "version"]:
+                            if key in row:
+                                row_dict[key] = row[key]
 
-                    col_id_to_name = {c["id"]: c["title"] for c in sheet["columns"]}
-                    for c in row.get("cells", []):
-                        name = col_id_to_name.get(c.get("columnId"))
-                        if name:
-                            row_dict[name] = c.get("value")
-                    results.append(row_dict)
+                        col_id_to_name = {c["id"]: c["title"] for c in sheet["columns"]}
+                        for c in row.get("cells", []):
+                            name = col_id_to_name.get(c.get("columnId"))
+                            if name:
+                                val = c.get("value")
+                                # Match production: whole-number floats → clean strings
+                                import math
+                                if isinstance(val, float) and math.isfinite(val) and val == int(val):
+                                    val = str(int(val))
+                                row_dict[name] = val
+                        results.append(row_dict)
                     break
         return results
     

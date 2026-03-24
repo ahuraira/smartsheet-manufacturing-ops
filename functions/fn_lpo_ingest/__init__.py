@@ -93,6 +93,7 @@ from shared import (
     format_datetime_for_smartsheet,
     generate_lpo_folder_path,
     generate_lpo_folder_url,
+    scope_filename,
     
     # ID generation (v1.6.8)
     generate_next_lpo_id,
@@ -374,7 +375,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             Column.LPO_MASTER.DELIVERED_QUANTITY_SQM: 0,
             Column.LPO_MASTER.DELIVERED_VALUE: 0,
             Column.LPO_MASTER.PO_BALANCE_QUANTITY: request.po_quantity_sqm,
-            Column.LPO_MASTER.AREA_TYPE: request.area_type,  # v1.6.6: Area type for billing
+            Column.LPO_MASTER.AREA_TYPE: request.area_type,
+            Column.LPO_MASTER.PROJECT_CATEGORY: request.project_category,
         }
         
         result = client.add_row(Sheet.LPO_MASTER, lpo_data)
@@ -430,8 +432,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             upload_items = []
             for f in all_files:
                 if f.file_content:
-                    file_name = f.file_name or f"{f.file_type.value}_file"
-                    ext = file_name.lower().split('.')[-1] if '.' in file_name else ''
+                    raw_name = f.file_name or f"{f.file_type.value}_file"
+                    file_name = scope_filename(raw_name, request.sap_reference)
+                    ext = raw_name.lower().split('.')[-1] if '.' in raw_name else ''
                     # PDF → LPO Documents, Excel → Costing, Others → LPO Documents
                     if ext in ('xlsx', 'xls', 'csv'):
                         subfolder = "Costing"

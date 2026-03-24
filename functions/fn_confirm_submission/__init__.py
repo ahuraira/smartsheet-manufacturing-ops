@@ -46,6 +46,7 @@ from shared.allocation_service import _parse_rows
 from shared.queue_lock import AllocationLock
 from shared.audit import log_user_action, create_exception
 from shared.models import ActionType, ExceptionSeverity, ExceptionSource, ReasonCode
+from shared.helpers import resolve_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         # 2. Get Smartsheet client
         client = get_smartsheet_client()
-        
+        request.approver = resolve_user_email(client, request.approver)
+
         # 3. Find submission in CONSUMPTION_LOG
         from shared.manifest import get_manifest
         manifest = get_manifest()

@@ -100,6 +100,10 @@ from .models import (
     ScheduleTagRequest,
     ScheduleTagRequest,
     ScheduleTagResponse,
+    # Delivery models
+    DeliveryStatus,
+    DeliveryIngestRequest,
+    DeliveryUpdateRequest,
     # Generic File Upload (v1.6.9)
     FileUploadItem,
 )
@@ -161,6 +165,8 @@ from .helpers import (
     compute_combined_file_hash,
     calculate_sla_due,
     format_datetime_for_smartsheet,
+    normalize_ref_value,
+    scope_filename,
     parse_float_safe,
     parse_int_safe,
     safe_get,
@@ -304,6 +310,10 @@ __all__ = [
     "LPOIngestResponse",
     "LPOUpdateResponse",
     "LPOUpdateResponse",
+    # Delivery models
+    "DeliveryStatus",
+    "DeliveryIngestRequest",
+    "DeliveryUpdateRequest",
     # Generic File Upload (v1.6.9)
     "FileUploadItem",
     # Client and exceptions
@@ -346,6 +356,7 @@ __all__ = [
     "compute_file_hash_from_base64",
     "calculate_sla_due",
     "format_datetime_for_smartsheet",
+    "normalize_ref_value",
     "parse_float_safe",
     "parse_int_safe",
     "safe_get",

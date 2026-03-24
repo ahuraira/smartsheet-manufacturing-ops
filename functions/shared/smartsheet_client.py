@@ -604,16 +604,19 @@ class SmartsheetClient:
         if not target_column_id:
             raise SmartsheetNotFoundError(f"Column '{column_ref}' not found in sheet")
         
+        # Normalize search value once
+        normalized_value = self._normalize_for_comparison(value)
+
         # Search rows
         matching_rows = []
         for row in sheet_data.get("rows", []):
             for cell in row.get("cells", []):
                 if cell.get("columnId") == target_column_id:
                     cell_value = cell.get("value") or cell.get("displayValue")
-                    if cell_value == value:
+                    if cell_value == value or self._normalize_for_comparison(cell_value) == normalized_value:
                         matching_rows.append(self._row_to_dict(row, col_id_to_name))
                     break
-        
+
         return matching_rows
     
     def find_row(
@@ -760,20 +763,56 @@ class SmartsheetClient:
         return result.get("result", [{}])[0]
     
     def _row_to_dict(self, row: Dict[str, Any], col_id_to_name: Dict[int, str]) -> Dict[str, Any]:
-        """Convert a Smartsheet row to a dictionary."""
+        """Convert a Smartsheet row to a dictionary.
+
+        Whole-number floats (e.g. 12345.0) are converted to their string
+        representation ("12345") so that downstream code never sees "12345.0"
+        when calling str() on reference/ID fields.  parse_float_safe() handles
+        string inputs, so numeric consumers are unaffected.
+        """
         result = {"row_id": row["id"]}
-        
+
         # Include system columns/metadata
         for key in ["createdAt", "modifiedAt", "rowNumber", "version", "accessLevel"]:
             if key in row:
                 result[key] = row[key]
-        
+
         for cell in row.get("cells", []):
             col_name = col_id_to_name.get(cell.get("columnId"))
             if col_name:
-                result[col_name] = cell.get("value") or cell.get("displayValue")
-        
+                value = cell.get("value") or cell.get("displayValue")
+                # Normalize whole-number floats → clean strings
+                # 12345.0 → "12345", but 150.5 stays as 150.5
+                import math
+                if isinstance(value, float) and math.isfinite(value) and value == int(value):
+                    value = str(int(value))
+                result[col_name] = value
+
         return result
+
+    @staticmethod
+    def _normalize_for_comparison(value: Any) -> str:
+        """
+        Normalize a value for comparison, handling Smartsheet's tendency
+        to return numeric TEXT_NUMBER cells as floats.
+
+        Examples:
+            12345.0  → "12345"
+            "12345"  → "12345"
+            "PTE-185"→ "PTE-185"
+            None     → ""
+        """
+        if value is None:
+            return ""
+        s = str(value).strip()
+        # Strip trailing .0 from float-like strings (12345.0 → 12345)
+        if "." in s:
+            stripped = s.rstrip("0").rstrip(".")
+            # Only use stripped version if it didn't lose significant digits
+            # i.e., "10.0" → "10" is fine, but "1.5" → "1.5" stays
+            if stripped:
+                s = stripped
+        return s
     
     @retry_with_backoff(max_retries=3)
     def get_all_rows(self, sheet_ref: Union[str, int]) -> List[Dict[str, Any]]:

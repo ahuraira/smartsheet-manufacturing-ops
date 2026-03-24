@@ -61,6 +61,7 @@ class Sheet:
     REMNANT_LOG = "REMNANT_LOG"
     FILLER_LOG = "FILLER_LOG"
     DELIVERY_LOG = "DELIVERY_LOG"
+    DELIVERY_LOG_INGESTION = "07H_DELIVERY_LOG_INGESTION"  # Staging sheet
     INVOICE_LOG = "INVOICE_LOG"
     INVENTORY_TXN_LOG = "INVENTORY_TXN_LOG"
     INVENTORY_SNAPSHOT = "INVENTORY_SNAPSHOT"
@@ -159,7 +160,8 @@ class Column:
         UPDATED_BY = "UPDATED_BY"
         # Area type for billing calculations (v1.6.6)
         AREA_TYPE = "AREA_TYPE"
-    
+        PROJECT_CATEGORY = "PROJECT_CATEGORY"
+
     class LPO_INGESTION_STAGING:
         """01h LPO Ingestion staging sheet columns."""
         CUSTOMER_LPO_REF = "CUSTOMER_LPO_REF"
@@ -182,6 +184,7 @@ class Column:
         PROCESSED_AT = "PROCESSED_AT"
         # Area type for billing calculations (v1.6.6)
         AREA_TYPE = "AREA_TYPE"
+        PROJECT_CATEGORY = "PROJECT_CATEGORY"
 
     class TAG_REGISTRY:
         """02 Tag Sheet Registry columns."""
@@ -447,6 +450,33 @@ class Column:
         CONSUMPTION_TYPE = "CONSUMPTION_TYPE"
         REMARKS = "REMARKS"
     
+    class DELIVERY_LOG:
+        """07 Delivery Log columns."""
+        DELIVERY_ID = "DELIVERY_ID"
+        SAP_DO_NUMBER = "SAP_DO_NUMBER"
+        TAG_SHEET_ID = "TAG_SHEET_ID"
+        SAP_INVOICE_NUMBER = "SAP_INVOICE_NUMBER"
+        STATUS = "STATUS"
+        LINES = "LINES"
+        QUANTITY = "QUANTITY"
+        VALUE = "VALUE"
+        VEHICLE_ID = "VEHICLE_ID"
+        CREATED_AT = "CREATED_AT"
+        REMARKS = "REMARKS"
+
+    class DELIVERY_LOG_INGESTION:
+        """07h Delivery Log Ingestion staging sheet columns."""
+        SAP_DO_NUMBER = "SAP_DO_NUMBER"
+        TAG_SHEET_ID = "TAG_SHEET_ID"
+        SAP_INVOICE_NUMBER = "SAP_INVOICE_NUMBER"
+        STATUS = "STATUS"
+        LINES = "LINES"
+        QUANTITY = "QUANTITY"
+        VALUE = "VALUE"
+        VEHICLE_ID = "VEHICLE_ID"
+        CREATED_AT = "CREATED_AT"
+        REMARKS = "REMARKS"
+
     class INVENTORY_TXN_LOG:
         """90 Inventory Transaction Log columns."""
         TXN_ID = "TXN_ID"
@@ -490,6 +520,8 @@ SHEET_COLUMNS = {
     Sheet.ALLOCATION_LOG: Column.ALLOCATION_LOG,
     Sheet.MARGIN_APPROVAL_LOG: Column.MARGIN_APPROVAL_LOG,
     Sheet.CONSUMPTION_LOG: Column.CONSUMPTION_LOG,
+    Sheet.DELIVERY_LOG: Column.DELIVERY_LOG,
+    Sheet.DELIVERY_LOG_INGESTION: Column.DELIVERY_LOG_INGESTION,
     Sheet.EXCEPTION_LOG: Column.EXCEPTION_LOG,
     Sheet.USER_ACTION_LOG: Column.USER_ACTION_LOG,
     Sheet.MATERIAL_MASTER: Column.MATERIAL_MASTER,

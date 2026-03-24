@@ -47,6 +47,8 @@ from .handlers import (
     handle_lpo_update,
     handle_tag_ingest,
     handle_schedule_ingest,
+    handle_delivery_ingest,
+    handle_delivery_update,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +59,8 @@ HANDLER_REGISTRY = {
     "lpo_update": handle_lpo_update,
     "tag_ingest": handle_tag_ingest,
     "schedule_tag": handle_schedule_ingest,
-    # Add more handlers as implemented
+    "delivery_ingest": handle_delivery_ingest,
+    "delivery_update": handle_delivery_update,
 }
 
 # Initialize routing table on cold start

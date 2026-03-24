@@ -133,6 +133,8 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
         terms_of_payment = get_cell_value_by_logical_name(row_data, sheet_logical, "TERMS_OF_PAYMENT")
         wastage_pct = get_cell_value_by_logical_name(row_data, sheet_logical, "WASTAGE_CONSIDERED_IN_COSTING")
         planned_gm_pct = get_cell_value_by_logical_name(row_data, sheet_logical, "PLANNED_GM_PCT")
+        area_type = get_cell_value_by_logical_name(row_data, sheet_logical, "AREA_TYPE")
+        project_category = get_cell_value_by_logical_name(row_data, sheet_logical, "PROJECT_CATEGORY")
         remarks = get_cell_value_by_logical_name(row_data, sheet_logical, "REMARKS")
         
         # =====================================================================
@@ -164,6 +166,8 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
                 terms_of_payment=terms_of_payment or "30 Days Credit",
                 wastage_pct=normalize_percentage(wastage_pct, 0.0),  # v1.6.7: normalize 18, 0.18, 18%
                 planned_gm_pct=parse_float_safe(planned_gm_pct, default=None),
+                area_type=area_type or "External",
+                project_category=project_category,
                 remarks=remarks,
                 # Attachments
                 files=files,

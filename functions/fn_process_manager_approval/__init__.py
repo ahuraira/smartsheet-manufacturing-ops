@@ -10,7 +10,7 @@ from shared.logical_names import Sheet, Column
 from shared.blob_storage import get_blob_service_client, get_container_name, upload_json_blob
 from shared.audit import log_user_action, create_exception
 from shared.models import ActionType, ExceptionSeverity, ExceptionSource, ReasonCode
-from shared.helpers import now_uae, format_datetime_for_smartsheet
+from shared.helpers import now_uae, format_datetime_for_smartsheet, parse_float_safe, resolve_user_email
 from shared.queue_lock import AllocationLock
 
 logger = logging.getLogger(__name__)
@@ -190,6 +190,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             if sess_val:
                 session_ids.append(str(sess_val))
 
+        # 3b. Resolve LPO area_type (Internal/External) for correct billing area
+        area_type = "External"  # Default
+        try:
+            lpo_row = client.find_row(Sheet.LPO_MASTER, Column.LPO_MASTER.SAP_REFERENCE, lpo_ref)
+            if lpo_row:
+                col_area_type = manifest.get_column_name(Sheet.LPO_MASTER, Column.LPO_MASTER.AREA_TYPE)
+                if col_area_type:
+                    area_type = lpo_row.get(col_area_type) or "External"
+        except Exception as e:
+            logger.warning(f"[{trace_id}] Could not resolve area_type for LPO {lpo_ref}: {e}")
+
         # 4. Fetch JSON Blobs and Apply Margin Penalty
         service_client = get_blob_service_client()
         if not service_client:
@@ -219,17 +230,27 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 content = blob_client.download_blob().readall()
                 nest_json = json.loads(content)
 
-                # The structure of nest_json typically has "bom_result" -> "lines"
-                bom_lines = nest_json.get("bom_result", {}).get("lines", [])
-                for line in bom_lines:
-                    # Assuming duck area is 'area_m2' or calculate from dims
-                    original_area = float(line.get("area_m2", 0.0))
-                    inflated_area = original_area * multiplier
-                    line["billed_area_m2"] = round(inflated_area, 4)
-                    line["original_area_m2"] = original_area
-                    line["penalty_multiplier"] = multiplier
-                    line["source_tag"] = nest_json.get("tag_id", sess_id)
-                    master_do_lines.append(line)
+                # Read delivery lines from finished_goods_manifest (parsed from nesting)
+                # Each line has internal_area_m2 and external_area_m2; pick based on LPO area_type
+                fg_lines = nest_json.get("finished_goods_manifest", [])
+                source_tag = nest_json.get("meta_data", {}).get("tag_id") or sess_id
+                area_field = "external_area_m2" if area_type == "External" else "internal_area_m2"
+
+                for line in fg_lines:
+                    original_area = parse_float_safe(line.get(area_field, 0.0), default=0.0)
+                    qty = parse_float_safe(line.get("qty_produced", line.get("qty", 1)), default=1.0)
+                    line_area = original_area * qty
+                    inflated_area = line_area * multiplier
+
+                    master_do_lines.append({
+                        "description": line.get("description", ""),
+                        "qty": qty,
+                        "original_area_m2": round(line_area, 4),
+                        "billed_area_m2": round(inflated_area, 4),
+                        "penalty_multiplier": multiplier,
+                        "area_type": area_type,
+                        "source_tag": source_tag,
+                    })
                     total_inflated_area += inflated_area
 
             except Exception as e:
@@ -246,45 +267,71 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 except Exception:
                     logger.error(f"[{trace_id}] Failed to create exception record")
 
-        # 5. Build and Save DO Payload
-        delivery_id = f"DO-{uuid.uuid4().hex[:8].upper()}"
-        do_payload = {
-            "delivery_id": delivery_id,
-            "lpo_reference": lpo_ref,
-            "tags_included": all_tags,
-            "manager_penalty_pct": penalty_pct,
-            "total_billed_area": total_inflated_area,
-            "delivery_lines": master_do_lines,
-            "generated_at": trace_id
-        }
+        # 5. Compute original (un-penalised) area for cost calculation
+        total_original_area = sum(
+            line.get("original_area_m2", 0.0) for line in master_do_lines
+        )
 
-        do_blob_path = f"{lpo_ref}/Deliveries/do_{delivery_id}.json"
-        upload_json_blob(do_payload, do_blob_path, trace_id)
-
-        # 6. Recalculate margin with PM-adjusted penalty
+        # 6. Recalculate margin
+        # Revenue uses inflated area (what the customer is billed)
+        # Cost uses original area (actual production cost doesn't change with penalty)
         from shared.costing_service import CostingService
         from shared.adaptive_card_builder import build_do_creation_card
 
         costing = CostingService(client)
-        adjusted_area = total_inflated_area
         try:
-            margin_metrics = costing.calculate_margin(tag_sheet_id, adjusted_area, lpo_ref)
+            margin_metrics = costing.calculate_margin(
+                tag_sheet_id, total_original_area, lpo_ref
+            )
+            # Override revenue with inflated area (penalty-adjusted billing)
+            selling_price = margin_metrics.get("selling_price_per_sqm", 0.0)
+            inflated_revenue = total_inflated_area * selling_price
+            inflated_profit = inflated_revenue - margin_metrics["total_cost_aed"]
+            inflated_gm_pct = (inflated_profit / inflated_revenue) if inflated_revenue > 0 else 0.0
+
+            margin_metrics["billed_area_sqm"] = round(total_inflated_area, 2)
+            margin_metrics["original_area_sqm"] = round(total_original_area, 2)
+            margin_metrics["total_revenue_aed"] = round(inflated_revenue, 2)
+            margin_metrics["gross_profit_aed"] = round(inflated_profit, 2)
+            margin_metrics["gm_pct"] = round(inflated_gm_pct, 4)
         except Exception as e:
             logger.warning(f"[{trace_id}] Margin recalculation failed, using basic figures: {e}")
             margin_metrics = {
                 "total_cost_aed": 0.0,
-                "total_revenue_aed": adjusted_area * 25.0,  # fallback
+                "total_revenue_aed": total_inflated_area * 25.0,  # fallback
                 "gm_pct": 0.0,
             }
 
         margin_summary = {
+            "original_area_sqm": round(total_original_area, 2),
+            "billed_area_sqm": round(total_inflated_area, 2),
+            "penalty_pct": penalty_pct,
             "adjusted_gm_pct": margin_metrics.get("gm_pct", 0.0),
             "adjusted_revenue_aed": margin_metrics.get("total_revenue_aed", 0.0),
             "total_cost_aed": margin_metrics.get("total_cost_aed", 0.0),
         }
 
+        # 5b. Build and Save DO Payload (after margin calc so we can include it)
+        delivery_id = f"DO-{uuid.uuid4().hex[:8].upper()}"
+        do_payload = {
+            "delivery_id": delivery_id,
+            "lpo_reference": lpo_ref,
+            "tags_included": all_tags,
+            "area_type": area_type,
+            "manager_penalty_pct": penalty_pct,
+            "original_area_sqm": round(total_original_area, 2),
+            "total_billed_area": round(total_inflated_area, 2),
+            "margin_summary": margin_summary,
+            "delivery_lines": master_do_lines,
+            "generated_at": format_datetime_for_smartsheet(now_uae()),
+            "trace_id": trace_id,
+        }
+
+        do_blob_path = f"{lpo_ref}/Deliveries/do_{delivery_id}.json"
+        upload_json_blob(do_payload, do_blob_path, trace_id)
+
         # 7. Save SINGLE line to DELIVERY_LOG using logical column names
-        approver = req_body.get("approver", "system")
+        approver = resolve_user_email(client, req_body.get("approver", "system"))
         delivery_row = {
             Column.DELIVERY_LOG.DELIVERY_ID: delivery_id,
             Column.DELIVERY_LOG.TAG_SHEET_ID: ", ".join(all_tags),
@@ -382,7 +429,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # 10. Gather consumption data for all tags (split production vs accessories)
         from shared.allocation_service import _parse_rows
-        from shared.helpers import parse_float_safe
 
         production_lines = []
         accessory_lines = []

@@ -62,11 +62,11 @@ Smartsheet (UI + Data) → Power Automate (Orchestration) → Azure Functions (B
 
 | Module | Purpose |
 |--------|---------|
-| `smartsheet_client.py` | Thread-safe Smartsheet API wrapper with retry logic |
+| `smartsheet_client.py` | Thread-safe Smartsheet API wrapper with retry logic. `_row_to_dict()` normalizes whole-number floats to strings (see below). |
 | `models.py` | Pydantic v2 data models (TagIngestRequest, etc.) |
 | `logical_names.py` | `Sheet` and `Column` enums for ID-first architecture |
 | `manifest.py` | Loads `workspace_manifest.json`, resolves logical names → physical IDs |
-| `helpers.py` | Utility functions (hashing, SLA calc, formatting) |
+| `helpers.py` | Utility functions (hashing, SLA calc, formatting, `normalize_ref_value()`, `scope_filename()`, `resolve_user_email()`) |
 | `allocation_engine.py` | Material allocation algorithm |
 | `consumption_service.py` | Consumption event tracking and ledger updates |
 | `inventory_service.py` | Inventory transaction logging |
@@ -84,14 +84,17 @@ These are **non-negotiable** patterns enforced across the codebase. See `rules.m
 3. **Never use non-deterministic IDs for idempotency** — `client_request_id` must be deterministic (e.g., `f"staging-lpo-{row_id}"`), never timestamps or random values.
 4. **Never read-then-write without locking** — Smartsheet is last-write-wins. Flag with `REQUIRES_LOCKING` comment if lock not yet implemented.
 5. **Never put business logic in Smartsheet** — All logic in Azure Functions.
+6. **Never write Smartsheet user IDs to data fields** — Always resolve to email via `resolve_user_email(client, user_id)` before writing to CREATED_BY, UPDATED_BY, SUBMITTED_BY, or passing to `log_user_action()`. Smartsheet webhooks send numeric user IDs; these must be converted to email addresses.
+7. **Never assume Smartsheet cell values are the expected type** — `_row_to_dict()` normalizes whole-number floats to strings (12345.0 → "12345"), but always use `parse_float_safe()` for numeric access and `normalize_ref_value()` for reference/ID fields extracted from row dicts.
 
 ### Always Do
 
 1. **ID-First Architecture** — Import `Sheet`/`Column` from `shared.logical_names`, use `get_manifest()` to resolve IDs.
 2. **Idempotency** — Every POST/PUT accepts `client_request_id`. Duplicate requests return 200 with existing resource.
-3. **Audit Logging** — Every state change logs to User Action Log via `log_user_action()`.
+3. **Audit Logging** — Every state change logs to User Action Log via `log_user_action()`. The `user_id` parameter must always be an email address, never a numeric Smartsheet ID.
 4. **Exception Records** — Business rule violations create Exception Log records via `create_exception()`. Never fail silently.
 5. **DRY** — Check `functions/shared/` before writing new helpers. Shared utilities go in `shared/` if used by more than one function.
+6. **User Email Resolution** — Before writing any user identity field (CREATED_BY, UPDATED_BY, etc.) to Smartsheet or passing to `log_user_action()`, call `resolve_user_email(client, raw_user_id)`. Do this once per request, not per call. The event dispatcher already resolves `event.actor_id` centrally, so handler code can use it directly.
 
 ## Testing Patterns
 
@@ -122,7 +125,7 @@ Follow this workflow for every code change. The steps are ordered — do not ski
 1. **Read `rules.md`** — mandatory rules that override everything else.
 2. **Read the relevant specification** in `Specifications/` — find the spec that covers the feature you're building or modifying. Specs define the expected behavior, not the code.
 3. **Read `functions/shared/` modules** before writing any new helper. Key modules to check:
-   - `helpers.py` — utility functions (hashing, date formatting, `parse_float_safe`, `get_physical_column_name`)
+   - `helpers.py` — utility functions (hashing, date formatting, `parse_float_safe`, `normalize_ref_value`, `scope_filename`, `resolve_user_email`, `get_physical_column_name`)
    - `audit.py` — `create_exception()`, `log_user_action()` — use these, never duplicate
    - `models.py` — Pydantic models, enums (`ExceptionSeverity`, `ExceptionSource`, `ReasonCode`, `ActionType`)
    - `flow_models.py` — request/response models for flow endpoints
@@ -228,6 +231,36 @@ col_status = manifest.get_column_name(Sheet.YOUR_SHEET, Column.YOUR_SHEET.STATUS
 qty = parse_float_safe(row.get(col_qty), default=0.0)
 ```
 
+#### Smartsheet Value Normalization (CRITICAL)
+
+Smartsheet TEXT_NUMBER columns return numeric-looking values as floats (e.g. user enters `12345` → API returns `12345.0`). This causes type mismatches throughout the system.
+
+**How it's handled (two layers):**
+
+1. **`_row_to_dict()` in `smartsheet_client.py`** — Converts whole-number floats to clean strings at the source. All row dicts returned by `find_row()`, `find_rows()`, `get_row()` have this normalization applied. `12345.0 → "12345"`, but `150.5` stays as `150.5`.
+
+2. **`find_rows()` comparison** — Normalizes both cell value and search value before comparison, so `find_row(Sheet.X, Column.X.REF, "12345")` matches a cell containing either `"12345"` or `12345.0`.
+
+**When reading row values:**
+```python
+# Numeric fields — always use parse_float_safe (handles strings, None, "N/A")
+qty = parse_float_safe(row.get(col_qty), default=0.0)
+
+# Reference/ID fields — already normalized by _row_to_dict, but use normalize_ref_value() if comparing
+ref = row.get(col_sap_ref)  # Already "12345" not 12345.0
+
+# If building a filename with a reference ID
+file_name = scope_filename("invoice.pdf", sap_reference)  # → "invoice_PTE-185.pdf"
+```
+
+**When writing user identity fields:**
+```python
+# ALWAYS resolve before writing — never write raw Smartsheet user IDs
+created_by_email = resolve_user_email(client, request.uploaded_by)
+row_data[Column.MY_SHEET.CREATED_BY] = created_by_email
+log_user_action(client=client, user_id=created_by_email, ...)
+```
+
 #### Distributed Locking (for writes that read-then-modify)
 
 ```python
@@ -277,6 +310,7 @@ Run through this before marking any task complete:
 - [ ] Every outermost `except Exception` block calls `create_exception()` (wrapped in its own try/except)
 - [ ] No bare `except:` — always `except Exception as e:`
 - [ ] No bare `float()` on Smartsheet values — use `parse_float_safe()`
+- [ ] No raw Smartsheet user IDs written to data — use `resolve_user_email()` for CREATED_BY, UPDATED_BY, SUBMITTED_BY, and `log_user_action()` user_id
 - [ ] No `datetime.now()` for UTC comparisons — use `datetime.utcnow()`
 - [ ] Read-then-write operations are inside a distributed lock
 - [ ] New shared code is in `shared/` and exported from `__init__.py`

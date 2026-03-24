@@ -88,7 +88,8 @@ from shared import (
     generate_trace_id,
     format_datetime_for_smartsheet,
     parse_float_safe,
-    
+    resolve_user_email,
+
     # Audit (shared - DRY)
     create_exception,
     log_user_action,
@@ -363,7 +364,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         from shared.helpers import now_uae
         schedule_id = generate_next_schedule_id(client)
         now = format_datetime_for_smartsheet(now_uae())
-        
+        requested_by_email = resolve_user_email(client, request.requested_by)
+
         schedule_data = {
             Column.PRODUCTION_PLANNING.SCHEDULE_ID: schedule_id,
             Column.PRODUCTION_PLANNING.TAG_SHEET_ID: request.tag_id,
@@ -372,7 +374,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             Column.PRODUCTION_PLANNING.MACHINE_ASSIGNED: request.machine_id,
             Column.PRODUCTION_PLANNING.PLANNED_QUANTITY: schedule_qty,
             Column.PRODUCTION_PLANNING.STATUS: "Released for Nesting",
-            Column.PRODUCTION_PLANNING.CREATED_BY: request.requested_by,
+            Column.PRODUCTION_PLANNING.CREATED_BY: requested_by_email,
             Column.PRODUCTION_PLANNING.CREATED_AT: now,
             Column.PRODUCTION_PLANNING.CLIENT_REQUEST_ID: request.client_request_id,
             Column.PRODUCTION_PLANNING.TRACE_ID: trace_id,
@@ -402,7 +404,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 client.update_row(Sheet.LPO_MASTER, lpo_row_id, {
                     Column.LPO_MASTER.PLANNED_QUANTITY: new_planned_qty,
                     Column.LPO_MASTER.UPDATED_AT: now,
-                    Column.LPO_MASTER.UPDATED_BY: request.requested_by,
+                    Column.LPO_MASTER.UPDATED_BY: requested_by_email,
                 })
             except Exception as lpo_update_err:
                 logger.warning(f"[{trace_id}] Could not update LPO planned quantity: {lpo_update_err}")

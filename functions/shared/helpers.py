@@ -207,6 +207,49 @@ def format_datetime_for_smartsheet(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def normalize_ref_value(value: Any) -> str:
+    """
+    Normalize a reference value to a consistent string representation.
+
+    Smartsheet TEXT_NUMBER columns may return numeric-looking values as
+    floats (e.g. 12345 → 12345.0).  This function ensures consistent
+    string comparison by stripping trailing '.0'.
+
+    Examples:
+        12345.0   → "12345"
+        12345     → "12345"
+        "12345"   → "12345"
+        "PTE-185" → "PTE-185"
+        None      → ""
+        "12345.0" → "12345"
+        99999.0   → "99999"
+    """
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if "." in s:
+        stripped = s.rstrip("0").rstrip(".")
+        if stripped:
+            s = stripped
+    return s
+
+
+def scope_filename(original_name: str, scope_id: str) -> str:
+    """
+    Append a scope identifier to a filename before the extension.
+
+    Examples:
+        scope_filename("invoice.pdf", "PTE-185")   → "invoice_PTE-185.pdf"
+        scope_filename("sheet.xlsx", "TAG-001")     → "sheet_TAG-001.xlsx"
+        scope_filename("pod", "DO-0001")            → "pod_DO-0001"
+    """
+    scope_id = normalize_ref_value(scope_id)
+    if "." in original_name:
+        base, ext = original_name.rsplit(".", 1)
+        return f"{base}_{scope_id}.{ext}"
+    return f"{original_name}_{scope_id}"
+
+
 def parse_float_safe(value: Any, default: float = 0.0) -> float:
     """Safely parse a value to float."""
     if value is None:

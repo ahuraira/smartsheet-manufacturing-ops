@@ -119,6 +119,7 @@ from shared import (
     now_uae,
     # Column name resolution (v1.6.5 DRY)
     get_physical_column_name,
+    scope_filename,
     # User resolution (v1.6.8)
     resolve_user_email,
     # Audit (shared - DRY principle)
@@ -460,11 +461,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             upload_items = []
             for f in all_files:
                 if f.file_content:
-                    file_name = f.file_name or f"tag_{tag_id}_{len(upload_items)}"
+                    raw_name = f.file_name or f"tag_sheet_{len(upload_items)}"
+                    file_name = scope_filename(raw_name, tag_id)
                     upload_items.append(FileUploadItem(
                         file_name=file_name,
                         file_content=f.file_content,
-                        subfolder="Tag Sheets"  # All tag files go here
+                        subfolder="Tag Sheets"
                     ))
             
             if upload_items:

@@ -229,21 +229,15 @@ def build_consumption_card_lines(
     """
     lines = []
     for d in details:
-        # Compute raw remaining proportionally if raw_qty is available
-        if d.sap_qty > 0 and d.raw_qty > 0:
-            proportion_remaining = d.remaining_qty / d.sap_qty
-            default_raw = round(d.raw_qty * proportion_remaining, 4)
-        else:
-            default_raw = d.raw_qty
-
+        # Use SAP quantities (QUANTITY/UOM) as the primary for consistency
         lines.append(ConsumptionCardLine(
             allocation_id=d.allocation_id,
             sap_code=d.sap_code,
             nesting_description=d.nesting_description,
             sap_uom=d.sap_uom,
-            raw_uom=d.raw_uom,
-            allocated_raw_qty=d.raw_qty,
-            default_actual_raw_qty=default_raw,
+            raw_uom=d.sap_uom,         # Use SAP UOM consistently
+            allocated_raw_qty=d.sap_qty,          # SAP qty is the primary
+            default_actual_raw_qty=d.remaining_qty,  # Default to remaining SAP qty
             allocated_sap_qty=d.sap_qty,
             default_actual_sap_qty=d.remaining_qty,
         ))

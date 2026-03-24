@@ -37,6 +37,20 @@
             }
         },
         {
+            "logical_sheet": "07H_DELIVERY_LOG_INGESTION",
+            "description": "Delivery log submissions from staging sheet",
+            "actions": {
+                "created": {
+                    "handler": "delivery_ingest",
+                    "enabled": true
+                },
+                "updated": {
+                    "handler": "delivery_update",
+                    "enabled": true
+                }
+            }
+        },
+        {
             "logical_sheet": "LPO_MASTER",
             "description": "LPO master record changes",
             "actions": {
@@ -77,6 +91,16 @@
         },
         "schedule_tag": {
             "function": "fn_schedule_tag",
+            "timeout_seconds": 30,
+            "retry_on_failure": true
+        },
+        "delivery_ingest": {
+            "function": "fn_delivery_ingest",
+            "timeout_seconds": 30,
+            "retry_on_failure": true
+        },
+        "delivery_update": {
+            "function": "fn_delivery_ingest",
             "timeout_seconds": 30,
             "retry_on_failure": true
         },

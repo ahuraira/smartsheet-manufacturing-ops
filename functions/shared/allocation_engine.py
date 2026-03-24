@@ -190,7 +190,7 @@ def allocate_for_session(
         if not sap_code:
             continue  # Skip unmapped lines
 
-        qty = parse_float_safe(row.get(col_bom_qty) or row.get(col_bom_raw_qty), default=0.0)
+        qty = parse_float_safe(row.get(col_bom_qty), default=0.0)
         uom = row.get(col_bom_uom, "")
         raw_qty = parse_float_safe(row.get(col_bom_raw_qty), default=0.0)
         raw_uom = row.get(col_bom_raw_uom, "")
