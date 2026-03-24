@@ -193,18 +193,24 @@ class CostingService:
                 if lpo_rows:
                     mfst = self.manifest
                     col_price = mfst.get_column_name(Sheet.LPO_MASTER, Column.LPO_MASTER.PRICE_PER_SQM)
+                    col_planned_gm = mfst.get_column_name(Sheet.LPO_MASTER, Column.LPO_MASTER.PLANNED_GM_PCT)
                     col_margin = mfst.get_column_name(Sheet.LPO_MASTER, Column.LPO_MASTER.MARGIN_PCT)
 
                     price_val = lpo_rows[0].get(col_price, 0.0)
                     selling_price_per_sqm = parse_float_safe(price_val, default=0.0)
 
-                    # Use LPO-specific margin if available, otherwise keep config baseline
-                    if col_margin:
-                        margin_val = lpo_rows[0].get(col_margin)
-                        parsed_margin = parse_float_safe(margin_val, default=None)
-                        if parsed_margin is not None:
-                            # Normalize: if entered as e.g. 12 treat as 12%, if 0.12 treat as 12%
-                            target_margin_pct = parsed_margin / 100.0 if parsed_margin > 1.0 else parsed_margin
+                    # Use PLANNED_GM_PCT (user-entered target) as primary,
+                    # fall back to MARGIN_PCT, then config default
+                    planned_val = parse_float_safe(
+                        lpo_rows[0].get(col_planned_gm) if col_planned_gm else None,
+                        default=None
+                    )
+                    if planned_val is None and col_margin:
+                        planned_val = parse_float_safe(lpo_rows[0].get(col_margin), default=None)
+
+                    if planned_val is not None:
+                        # Normalize: 12 → 0.12, 0.12 stays 0.12
+                        target_margin_pct = planned_val / 100.0 if planned_val > 1.0 else planned_val
             except Exception as e:
                 logger.warning(f"Failed to extract LPO details for {lpo_sap_ref}: {e}")
                 try:
