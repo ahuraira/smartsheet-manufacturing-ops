@@ -443,8 +443,8 @@ def submit_consumption(
                 log_user_action(
                     client=client, user_id=resolved_user,
                     action_type=ActionType.CONSUMPTION_SUBMITTED,
-                    target_table="CONSUMPTION_LOG", target_id=trace_id,
-                    notes=f"Submitted {len(formatted_rows)} consumption rows",
+                    target_table="CONSUMPTION_LOG", target_id=tag_id,
+                    notes=f"Submitted {len(formatted_rows)} consumption rows for {tag_id}",
                     trace_id=trace_id
                 )
             except Exception as ua_err:
@@ -537,19 +537,21 @@ def submit_consumption(
                             current_tag_status = tag_row.get(col_tag_reg_status)
                             if current_tag_status != "Complete":
                                 tag_updates[tag_row.get("row_id")] = {
-                                    Column.TAG_REGISTRY.STATUS: "Complete"
+                                    "tag_id": str(t_id),  # Keep human-readable ID for audit
+                                    "updates": {Column.TAG_REGISTRY.STATUS: "Complete"},
                                 }
-                                
+
                 if tag_updates:
-                    for tag_row_id, updates in tag_updates.items():
-                        client.update_row(Sheet.TAG_REGISTRY, tag_row_id, updates)
+                    submission_user = resolved_user if resolved_user else "system"
+                    for tag_row_id, entry in tag_updates.items():
+                        client.update_row(Sheet.TAG_REGISTRY, tag_row_id, entry["updates"])
                     logger.info(f"[{trace_id}] Marked {len(tag_updates)} Tag Sheets as Complete")
                     try:
-                        for t_row_id in tag_updates:
+                        for tag_row_id, entry in tag_updates.items():
                             log_user_action(
-                                client=client, user_id="system",
+                                client=client, user_id=submission_user,
                                 action_type=ActionType.TAG_UPDATED,
-                                target_table="TAG_REGISTRY", target_id=str(t_row_id),
+                                target_table="TAG_REGISTRY", target_id=entry["tag_id"],
                                 new_value="Complete",
                                 trace_id=trace_id
                             )
@@ -560,19 +562,16 @@ def submit_consumption(
                     from .margin_orchestrator import MarginOrchestrator
                     orchestrator = MarginOrchestrator(client)
                     
-                    for tag_row_id, updates in tag_updates.items():
-                        if updates.get(Column.TAG_REGISTRY.STATUS) == "Complete":
-                            # We need to extract LPO SAP Reference and Delivered SQM
-                            # Re-find the exact tag_row from tag_registry_rows using row_id
+                    for tag_row_id, entry in tag_updates.items():
+                        if entry["updates"].get(Column.TAG_REGISTRY.STATUS) == "Complete":
                             tr_row = next((r for r in tag_registry_rows if str(r.get("row_id")) == str(tag_row_id)), None)
                             if tr_row:
                                 c_lpo = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.LPO_SAP_REFERENCE)
                                 c_sqm = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.TOTAL_AREA_SQM)
-                                c_id = manifest.get_column_name(Sheet.TAG_REGISTRY, Column.TAG_REGISTRY.TAG_ID)
-                                
+
                                 lpo_ref = tr_row.get(c_lpo, "")
                                 sqm_val = tr_row.get(c_sqm, 0.0)
-                                t_id = tr_row.get(c_id, "")
+                                t_id = entry["tag_id"]
                                 
                                 try:
                                     orchestrator.trigger_margin_approval_for_tag(

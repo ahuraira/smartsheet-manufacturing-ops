@@ -173,13 +173,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
                 client.update_row(Sheet.CONSUMPTION_LOG, row_id, updates)
 
-                # Audit log each status change
+                # Audit log each status change — use human-readable CON-xxxx ID
+                consumption_id = row.get(col_cons_id) or request.processed_submission_id
                 log_user_action(
                     client=client,
                     user_id=request.approver,
                     action_type=ActionType.LPO_UPDATED,
                     target_table="CONSUMPTION_LOG",
-                    target_id=str(cons.get(col_cons_id, row_id)),
+                    target_id=str(consumption_id),
                     old_value=row.get(col_status, ""),
                     new_value=new_status,
                     notes=f"Decision: {request.decision}. {request.notes or ''}",
