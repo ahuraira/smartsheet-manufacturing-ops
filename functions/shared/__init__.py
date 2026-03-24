@@ -177,6 +177,9 @@ from .helpers import (
     normalize_percentage,
     # User email resolution (v1.6.8+)
     resolve_user_email,
+    # UAE timezone helpers
+    UAE_TZ,
+    now_uae,
 )
 
 # Audit utilities (DRY - shared across functions)
@@ -352,6 +355,9 @@ __all__ = [
     "generate_lpo_subfolder_paths",
     # Column name resolution (v1.6.5+ DRY)
     "get_physical_column_name",
+    # UAE timezone helpers
+    "UAE_TZ",
+    "now_uae",
     # Audit utilities (DRY - v1.2.0+)
     "create_exception",
     "log_user_action",

@@ -51,6 +51,7 @@ class MaterialMasterEntry:
     nesting_description: str
     canonical_code: str
     default_sap_code: Optional[str] = None
+    sap_description: Optional[str] = None
     not_tracked: bool = False
     active: bool = True
 
@@ -251,7 +252,38 @@ class MappingService:
             result.error = str(e)
         
         return result
-    
+
+    def get_sap_conflicts(self) -> Dict[str, List[CatalogEntry]]:
+        """Find canonical codes with multiple SAP codes in catalog (05c).
+
+        Returns dict of canonical_code -> list of CatalogEntry (only where len >= 2).
+        """
+        self._ensure_catalog_cache_fresh()
+        groups: Dict[str, List[CatalogEntry]] = {}
+        with self._cache_lock:
+            for entry in self._catalog_cache.values():
+                if entry.canonical_code:
+                    groups.setdefault(entry.canonical_code, []).append(entry)
+        return {k: v for k, v in groups.items() if len(v) >= 2}
+
+    def get_material_description(self, canonical_code: str) -> Optional[str]:
+        """Get SAP description from Material Master (05a) by canonical code."""
+        self._ensure_cache_fresh()
+        with self._cache_lock:
+            for entry in self._material_master_cache.values():
+                if entry.canonical_code == canonical_code:
+                    return entry.sap_description
+        return None
+
+    def get_default_sap_code(self, canonical_code: str) -> Optional[str]:
+        """Get default SAP code from Material Master (05a) by canonical code."""
+        self._ensure_cache_fresh()
+        with self._cache_lock:
+            for entry in self._material_master_cache.values():
+                if entry.canonical_code == canonical_code:
+                    return entry.default_sap_code
+        return None
+
     def _normalize_description(self, description: str) -> str:
         """
         Normalize a nesting description for matching.
@@ -341,6 +373,7 @@ class MappingService:
                     nesting_description=normalized,
                     canonical_code=str(cells.get(col_ids["CANONICAL_CODE"], "")),
                     default_sap_code=cells.get(col_ids.get("DEFAULT_SAP_CODE")),
+                    sap_description=cells.get(col_ids.get("SAP_DESCRIPTION")),
                     not_tracked=not_tracked,
                     active=True,
                 )
@@ -512,7 +545,8 @@ class MappingService:
                         continue
                     
                     # Check effective dates (use UTC to match cache timestamps)
-                    now_date = datetime.utcnow().date()
+                    from shared.helpers import now_uae
+                    now_date = now_uae().date()
                     
                     eff_from_str = str(cells.get(col_ids.get("EFFECTIVE_FROM"), "")).split("T")[0]
                     eff_to_str = str(cells.get(col_ids.get("EFFECTIVE_TO"), "")).split("T")[0]
@@ -647,9 +681,10 @@ class MappingService:
         Returns the History ID.
         """
         from shared.logical_names import Sheet
-        
+        from shared.helpers import now_uae, format_datetime_for_smartsheet
+
         history_id = str(uuid4())[:8]  # Short ID for readability
-        
+
         try:
             col_ids = self._get_history_column_ids()
             
@@ -661,7 +696,7 @@ class MappingService:
                 col_ids["SAP_CODE"]: result.sap_code or "",
                 col_ids["DECISION"]: result.decision,
                 col_ids["TRACE_ID"]: trace_id,
-                col_ids["CREATED_AT"]: datetime.utcnow().isoformat(),
+                col_ids["CREATED_AT"]: format_datetime_for_smartsheet(now_uae()),
                 col_ids["NOTES"]: result.error or "",
                 
                 # Persist conversion context if columns exist
@@ -695,7 +730,8 @@ class MappingService:
         Returns the Exception ID.
         """
         from shared.logical_names import Sheet
-        
+        from shared.helpers import now_uae, format_datetime_for_smartsheet
+
         exception_id = f"MAPEX-{str(uuid4())[:8]}"
         
         try:
@@ -706,10 +742,10 @@ class MappingService:
                 col_ids["INGEST_LINE_ID"]: ingest_line_id,
                 col_ids["NESTING_DESCRIPTION"]: nesting_description,
                 col_ids["STATUS"]: "OPEN",
-                col_ids["CREATED_AT"]: datetime.utcnow().isoformat(),
+                col_ids["CREATED_AT"]: format_datetime_for_smartsheet(now_uae()),
                 col_ids["TRACE_ID"]: trace_id,
             }
-            
+
             self._client.add_row(Sheet.MAPPING_EXCEPTION, row_data)
             
         except Exception as e:

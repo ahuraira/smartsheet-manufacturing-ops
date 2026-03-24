@@ -30,7 +30,6 @@ SOTA Patterns:
 import logging
 import json
 import azure.functions as func
-from datetime import datetime
 
 import sys
 import os
@@ -43,6 +42,7 @@ from shared import (
     generate_trace_id,
     StockSnapshotLine,
     StockSnapshotResponse,
+    now_uae,
 )
 from shared.helpers import parse_float_safe
 from shared.allocation_service import _parse_rows
@@ -89,7 +89,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             response = StockSnapshotResponse(
                 trace_id=trace_id,
                 plant=plant,
-                snapshot_time=datetime.utcnow().isoformat() + "Z",
+                snapshot_time=now_uae().isoformat(),
                 lines=[]
             )
             return func.HttpResponse(
@@ -131,7 +131,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         response = StockSnapshotResponse(
             trace_id=trace_id,
             plant=plant,
-            snapshot_time=datetime.utcnow().isoformat() + "Z",
+            snapshot_time=now_uae().isoformat(),
             lines=lines
         )
         

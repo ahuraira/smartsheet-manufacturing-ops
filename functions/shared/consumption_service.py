@@ -21,12 +21,10 @@ import logging
 import os
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
-from datetime import datetime
-
 from .logical_names import Sheet, Column
 from .manifest import get_manifest
 from .models import ActionType, ExceptionSeverity, ExceptionSource, ReasonCode
-from .helpers import parse_float_safe
+from .helpers import parse_float_safe, now_uae
 from .audit import create_exception, log_user_action
 from .flow_models import (
     ConsumptionSubmission,
@@ -273,7 +271,7 @@ def submit_consumption(
     # 2. Acquire lock
     logger.info(f"[{trace_id}] Acquiring lock for allocations: {submission.allocation_ids}")
     
-    with AllocationLock(submission.allocation_ids, timeout_ms=30000, trace_id=trace_id) as lock:
+    with AllocationLock(submission.allocation_ids, timeout_ms=90000, trace_id=trace_id) as lock:
         if not lock.success:
             return SubmissionResult(
                 trace_id=trace_id,
@@ -375,7 +373,7 @@ def submit_consumption(
                     Column.CONSUMPTION_LOG.TAG_SHEET_ID: tag_id,
                     Column.CONSUMPTION_LOG.STATUS: "Submitted",
                     Column.CONSUMPTION_LOG.CONSUMPTION_TYPE: "PRODUCTION",
-                    Column.CONSUMPTION_LOG.CONSUMPTION_DATE: datetime.utcnow().date().isoformat(),
+                    Column.CONSUMPTION_LOG.CONSUMPTION_DATE: now_uae().date().isoformat(),
                     Column.CONSUMPTION_LOG.SHIFT: submission.shift,
                     Column.CONSUMPTION_LOG.MATERIAL_CODE: line.canonical_code,
                     Column.CONSUMPTION_LOG.QUANTITY: line.actual_qty,
@@ -396,7 +394,7 @@ def submit_consumption(
                     Column.CONSUMPTION_LOG.TAG_SHEET_ID: tag_id,
                     Column.CONSUMPTION_LOG.STATUS: "Submitted",
                     Column.CONSUMPTION_LOG.CONSUMPTION_TYPE: "ACCESSORY",
-                    Column.CONSUMPTION_LOG.CONSUMPTION_DATE: datetime.utcnow().date().isoformat(),
+                    Column.CONSUMPTION_LOG.CONSUMPTION_DATE: now_uae().date().isoformat(),
                     Column.CONSUMPTION_LOG.SHIFT: submission.shift,
                     Column.CONSUMPTION_LOG.MATERIAL_CODE: line.canonical_code,
                     Column.CONSUMPTION_LOG.QUANTITY: line.accessories_qty,

@@ -82,7 +82,6 @@ See Also
 import logging
 import json
 import azure.functions as func
-from datetime import datetime
 from typing import Optional
 
 import sys
@@ -117,6 +116,7 @@ from shared import (
     compute_combined_file_hash,  # Multi-file support (DRY with fn_lpo_ingest)
     format_datetime_for_smartsheet,
     parse_float_safe,
+    now_uae,
     # Column name resolution (v1.6.5 DRY)
     get_physical_column_name,
     # User resolution (v1.6.8)
@@ -194,7 +194,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # 3. File hash check (multi-file support - v1.6.3)
         # Uses get_all_files() for backward compatibility (DRY with LPOIngestRequest)
         all_files = request.get_all_files()
-        file_hash = compute_combined_file_hash(all_files) if all_files else None
+        file_hash = compute_combined_file_hash(all_files, include_filenames=True) if all_files else None
         
         if file_hash:
             existing_by_hash = client.find_row(
@@ -402,7 +402,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             Column.TAG_REGISTRY.CLIENT_REQUEST_ID: request.client_request_id,
             
             # Reception info
-            Column.TAG_REGISTRY.DATE_TAG_SHEET_RECEIVED: format_datetime_for_smartsheet(datetime.utcnow()),
+            Column.TAG_REGISTRY.DATE_TAG_SHEET_RECEIVED: format_datetime_for_smartsheet(now_uae()),
             Column.TAG_REGISTRY.RECEIVED_THROUGH: request.received_through,
             Column.TAG_REGISTRY.SUBMITTED_BY: submitted_by_email,  # v1.6.8: Resolved email
             

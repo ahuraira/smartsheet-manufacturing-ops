@@ -42,7 +42,6 @@ Response Codes
 import logging
 import json
 import azure.functions as func
-from datetime import datetime
 from typing import Optional, Dict, Any
 
 import sys
@@ -266,7 +265,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             updates[Column.LPO_MASTER.REMARKS] = request.remarks
         
         # Always update timestamp
-        updates[Column.LPO_MASTER.UPDATED_AT] = format_datetime_for_smartsheet(datetime.utcnow())
+        from shared.helpers import now_uae
+        updates[Column.LPO_MASTER.UPDATED_AT] = format_datetime_for_smartsheet(now_uae())
         
         if not updates:
             return func.HttpResponse(

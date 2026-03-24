@@ -62,8 +62,6 @@ Response Codes
 import logging
 import json
 import azure.functions as func
-from datetime import datetime
-from typing import Optional
 
 import sys
 import os
@@ -344,7 +342,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         )
         
         # 7. Create LPO record
-        now = format_datetime_for_smartsheet(datetime.utcnow())
+        from shared.helpers import now_uae
+        now = format_datetime_for_smartsheet(now_uae())
         po_value = request.po_quantity_sqm * request.price_per_sqm
         
         # v1.6.8: Generate LPO ID and resolve email
@@ -364,6 +363,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             Column.LPO_MASTER.PO_QUANTITY_SQM: request.po_quantity_sqm,
             Column.LPO_MASTER.PO_VALUE: po_value,
             Column.LPO_MASTER.TERMS_OF_PAYMENT: request.terms_of_payment,
+            Column.LPO_MASTER.PLANNED_GM_PCT: request.planned_gm_pct,
             Column.LPO_MASTER.HOLD_REASON: request.hold_reason,
             Column.LPO_MASTER.REMARKS: request.remarks,
             Column.LPO_MASTER.FOLDER_URL: folder_url,
@@ -460,7 +460,23 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 f"[{trace_id}] Folder creation flow trigger failed: {flow_result.error_message}. "
                 "Folders can be created manually or on retry."
             )
-        
+
+        # SAP conflict check (fire-and-forget)
+        try:
+            from shared.sap_conflict_service import SAPConflictService
+            conflict_service = SAPConflictService(client)
+            conflict_result = conflict_service.check_and_notify_conflicts(
+                sap_reference=request.sap_reference,
+                customer_name=request.customer_name,
+                project_name=request.project_name,
+                brand=request.brand,
+                trace_id=trace_id,
+            )
+            if conflict_result:
+                logger.info(f"[{trace_id}] SAP conflict card dispatched for {request.sap_reference}")
+        except Exception as e:
+            logger.warning(f"[{trace_id}] SAP conflict check failed (non-blocking): {e}")
+
         # 10. Return success
         return func.HttpResponse(
             json.dumps({

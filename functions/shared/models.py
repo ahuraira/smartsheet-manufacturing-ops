@@ -133,6 +133,7 @@ class ReasonCode(str, Enum):
     TAG_INVALID_STATUS = "TAG_INVALID_STATUS"
     # General reason codes
     SCHEDULE_INVALID_DATA = "SCHEDULE_INVALID_DATA"
+    SAP_CODE_CONFLICT = "SAP_CODE_CONFLICT"
     SYSTEM_ERROR = "SYSTEM_ERROR"
 
 
@@ -154,6 +155,8 @@ class ActionType(str, Enum):
     SCHEDULE_CREATED = "SCHEDULE_CREATED"
     SCHEDULE_UPDATED = "SCHEDULE_UPDATED"
     SCHEDULE_CANCELLED = "SCHEDULE_CANCELLED"
+    SAP_CONFLICT_DETECTED = "SAP_CONFLICT_DETECTED"
+    OVERRIDE_CREATED = "OVERRIDE_CREATED"
 
 
 class Shift(str, Enum):
@@ -209,9 +212,17 @@ class TagIngestRequest(BaseModel):
     user_remarks: Optional[str] = None  # User-entered remarks
     remarks: Optional[str] = None  # v1.6.8: Remarks from staging sheet
     location: Optional[str] = None  # v1.6.8: Location from staging sheet
-    
+
     metadata: Optional[Dict[str, Any]] = None
-    
+
+    # Coerce refs to string (Power Automate may send numeric values)
+    @field_validator('lpo_sap_reference', 'lpo_id', 'customer_lpo_ref', mode='before')
+    @classmethod
+    def coerce_refs_to_str(cls, v):
+        if v is None:
+            return v
+        return str(v).strip()
+
     def get_all_files(self) -> List["FileAttachment"]:
         """Get all files including legacy single-file fields (DRY - matches LPOIngestRequest)."""
         all_files = list(self.files)
@@ -391,6 +402,7 @@ class LPOIngestRequest(BaseModel):
     customer_lpo_ref: Optional[str] = None
     terms_of_payment: str = "30 Days Credit"
     wastage_pct: float = Field(default=0.0, ge=0, le=20)  # 0-20%
+    planned_gm_pct: Optional[float] = None  # Planned gross margin %
     hold_reason: Optional[str] = None
     remarks: Optional[str] = None
     area_type: str = "External"  # Internal or External (for billing calculations, v1.6.6)
@@ -409,10 +421,10 @@ class LPOIngestRequest(BaseModel):
     # SharePoint config (optional, can use env vars)
     sharepoint_base_url: Optional[str] = None
     
-    # v1.6.8: Coerce SAP reference to string (handles numeric inputs from PA)
-    @field_validator('sap_reference', mode='before')
+    # Coerce refs to string (Power Automate may send numeric values)
+    @field_validator('sap_reference', 'customer_lpo_ref', mode='before')
     @classmethod
-    def coerce_sap_reference(cls, v):
+    def coerce_refs_to_str(cls, v):
         if v is None:
             return v
         return str(v).strip()
@@ -438,12 +450,20 @@ class LPOIngestRequest(BaseModel):
 class LPOUpdateRequest(BaseModel):
     """Request payload for LPO update API."""
     client_request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    
+
     # Key for lookup
     sap_reference: str  # REQUIRED - identifies which LPO to update
-    
+
     # Optional fields - only update what's provided
     customer_lpo_ref: Optional[str] = None
+
+    # Coerce refs to string (Power Automate may send numeric values)
+    @field_validator('sap_reference', 'customer_lpo_ref', mode='before')
+    @classmethod
+    def coerce_refs_to_str(cls, v):
+        if v is None:
+            return v
+        return str(v).strip()
     customer_name: Optional[str] = None
     project_name: Optional[str] = None
     po_quantity_sqm: Optional[float] = Field(default=None, gt=0)

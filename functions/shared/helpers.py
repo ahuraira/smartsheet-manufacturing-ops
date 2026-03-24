@@ -11,9 +11,18 @@ import uuid
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Any, Dict
+from zoneinfo import ZoneInfo
 import requests
 
 from .models import ExceptionSeverity
+
+# UAE timezone constant (UTC+4)
+UAE_TZ = ZoneInfo("Asia/Dubai")
+
+
+def now_uae() -> datetime:
+    """Current datetime in UAE timezone (UTC+4)."""
+    return datetime.now(UAE_TZ)
 
 logger = logging.getLogger(__name__)
 
@@ -86,12 +95,15 @@ def resolve_user_email(client, user_id: str) -> str:
     return user_str
 
 
-def compute_file_hash(file_content: bytes) -> str:
-    """Compute SHA256 hash of file content."""
-    return hashlib.sha256(file_content).hexdigest()
+def compute_file_hash(file_content: bytes, filename: Optional[str] = None) -> str:
+    """Compute SHA256 hash of file content, optionally including filename."""
+    h = hashlib.sha256(file_content)
+    if filename:
+        h.update(filename.encode("utf-8"))
+    return h.hexdigest()
 
 
-def compute_file_hash_from_url(file_url: str, auth_headers: Optional[Dict[str, str]] = None) -> Optional[str]:
+def compute_file_hash_from_url(file_url: str, auth_headers: Optional[Dict[str, str]] = None, filename: Optional[str] = None) -> Optional[str]:
     """
     Download file from URL and compute its hash.
     Returns None if download fails.
@@ -100,13 +112,13 @@ def compute_file_hash_from_url(file_url: str, auth_headers: Optional[Dict[str, s
         headers = auth_headers or {}
         response = requests.get(file_url, headers=headers, timeout=30)
         response.raise_for_status()
-        return compute_file_hash(response.content)
+        return compute_file_hash(response.content, filename=filename)
     except Exception as e:
         logger.error(f"Failed to download file for hashing: {e}")
         return None
 
 
-def compute_file_hash_from_base64(file_content_base64: str) -> Optional[str]:
+def compute_file_hash_from_base64(file_content_base64: str, filename: Optional[str] = None) -> Optional[str]:
     """
     Compute hash from base64 encoded file content.
     Returns None if decoding fails.
@@ -114,45 +126,49 @@ def compute_file_hash_from_base64(file_content_base64: str) -> Optional[str]:
     import base64
     try:
         file_bytes = base64.b64decode(file_content_base64)
-        return compute_file_hash(file_bytes)
+        return compute_file_hash(file_bytes, filename=filename)
     except Exception as e:
         logger.error(f"Failed to decode base64 content for hashing: {e}")
         return None
 
 
-def compute_combined_file_hash(files: list) -> Optional[str]:
+def compute_combined_file_hash(files: list, include_filenames: bool = False) -> Optional[str]:
     """
     Compute a deterministic combined hash from multiple files.
-    
+
     Files are sorted by file_type for consistent ordering.
     Individual hashes are combined and hashed again.
-    
+
     Args:
         files: List of FileAttachment objects
-        
+        include_filenames: If True, include filename in each file's hash
+                          (used for tag sheets where same content with
+                          different filenames should be treated as distinct)
+
     Returns:
         Combined SHA256 hash string, or None if no valid hashes
     """
     if not files:
         return None
-    
+
     # Sort by file_type for deterministic ordering
     sorted_files = sorted(files, key=lambda f: f.file_type.value if hasattr(f.file_type, 'value') else str(f.file_type))
-    
+
     individual_hashes = []
     for f in sorted_files:
         file_hash = None
+        fname = (getattr(f, 'file_name', None) or None) if include_filenames else None
         if hasattr(f, 'file_content') and f.file_content:
-            file_hash = compute_file_hash_from_base64(f.file_content)
+            file_hash = compute_file_hash_from_base64(f.file_content, filename=fname)
         elif hasattr(f, 'file_url') and f.file_url:
-            file_hash = compute_file_hash_from_url(f.file_url)
-        
+            file_hash = compute_file_hash_from_url(f.file_url, filename=fname)
+
         if file_hash:
             individual_hashes.append(file_hash)
-    
+
     if not individual_hashes:
         return None
-    
+
     # Combine hashes with separator and hash again
     combined = "|".join(individual_hashes)
     return hashlib.sha256(combined.encode()).hexdigest()
@@ -167,20 +183,27 @@ def calculate_sla_due(severity: ExceptionSeverity, created_at: Optional[datetime
     - LOW: +72 hours
     """
     base_time = created_at or datetime.utcnow()
-    
+
     sla_hours = {
         ExceptionSeverity.CRITICAL: 4,
         ExceptionSeverity.HIGH: 24,
         ExceptionSeverity.MEDIUM: 48,
         ExceptionSeverity.LOW: 72,
     }
-    
+
     hours = sla_hours.get(severity, 48)
     return base_time + timedelta(hours=hours)
 
 
 def format_datetime_for_smartsheet(dt: datetime) -> str:
-    """Format datetime for Smartsheet API."""
+    """Format datetime for Smartsheet API in UAE timezone.
+
+    - Naive datetimes are assumed to already be in the target timezone
+      (callers should pass now_uae() which is UAE-aware).
+    - Timezone-aware datetimes are converted to UAE before formatting.
+    """
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(UAE_TZ)
     return dt.strftime("%Y-%m-%dT%H:%M:%S")
 
 

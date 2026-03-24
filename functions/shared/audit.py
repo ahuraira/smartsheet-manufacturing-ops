@@ -10,13 +10,12 @@ _log_user_action implementations across multiple functions.
 """
 
 import logging
-from datetime import datetime
 from typing import Optional
 
 from .logical_names import Sheet, Column
 from .models import ExceptionSeverity, ExceptionSource, ReasonCode, ActionType
 from .id_generator import generate_next_exception_id, generate_next_action_id
-from .helpers import calculate_sla_due, format_datetime_for_smartsheet
+from .helpers import calculate_sla_due, format_datetime_for_smartsheet, now_uae
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +77,7 @@ def create_exception(
             logger.warning(f"[{trace_id}] Exception dedup check failed: {e} - proceeding with creation")
     
     exception_id = generate_next_exception_id(client)
-    now = datetime.utcnow()
+    now = now_uae()
     
     exception_data = {
         Column.EXCEPTION_LOG.EXCEPTION_ID: exception_id,
@@ -168,7 +167,7 @@ def log_user_action(
     
     action_data = {
         Column.USER_ACTION_LOG.ACTION_ID: action_id,
-        Column.USER_ACTION_LOG.TIMESTAMP: format_datetime_for_smartsheet(datetime.utcnow()),
+        Column.USER_ACTION_LOG.TIMESTAMP: format_datetime_for_smartsheet(now_uae()),
         Column.USER_ACTION_LOG.USER_ID: user_id,
         Column.USER_ACTION_LOG.ACTION_TYPE: action_type.value,
         Column.USER_ACTION_LOG.TARGET_TABLE: target_table_str,

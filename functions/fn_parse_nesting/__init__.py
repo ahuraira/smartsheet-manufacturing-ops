@@ -17,7 +17,6 @@ import json
 import base64
 import traceback
 import uuid
-from datetime import datetime
 from typing import Optional, Tuple, Dict, Any
 
 from shared import (
@@ -86,7 +85,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # Extract context variables
         file_bytes = payload["file_content_bytes"]
-        filename = payload.get("filename", f"nesting_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx")
+        from shared.helpers import now_uae
+        filename = payload.get("filename", f"nesting_{now_uae().strftime('%Y%m%d_%H%M%S')}.xlsx")
         client_request_id = payload.get("client_request_id", str(uuid.uuid4()))
         sap_lpo_reference = payload.get("sap_lpo_reference")
         

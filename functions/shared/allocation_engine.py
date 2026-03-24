@@ -21,12 +21,12 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Dict, List, Optional
 
 from .logical_names import Sheet, Column
 from .manifest import get_manifest
-from .helpers import parse_float_safe
+from .helpers import parse_float_safe, now_uae, format_datetime_for_smartsheet
 from .audit import create_exception, log_user_action
 from .models import ActionType, ReasonCode, ExceptionSeverity, ExceptionSource
 from .stock_service import compute_available_qty, determine_stock_flag
@@ -110,7 +110,7 @@ def _parse_rows(sheet_data: dict) -> list:
 
 def _generate_allocation_id() -> str:
     """Generate a unique allocation ID."""
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d")
+    ts = now_uae().strftime("%Y%m%d")
     short_uuid = uuid.uuid4().hex[:6].upper()
     return f"ALLOC-{ts}-{short_uuid}"
 
@@ -147,7 +147,7 @@ def allocate_for_session(
         AllocationResult with status and created allocation IDs
     """
     manifest = get_manifest()
-    now = datetime.now(timezone.utc)
+    now = now_uae()
     result = AllocationResult(status="ALLOCATED")
 
     if not planned_date:
@@ -261,7 +261,7 @@ def allocate_for_session(
             col_alloc_shift:  shift,
             col_alloc_status: "Submitted",
             col_alloc_flag:   flag,
-            col_alloc_at:     now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            col_alloc_at:     format_datetime_for_smartsheet(now),
             col_alloc_until:  reserve_until,
             col_alloc_rmk:    f"Session: {nest_session_id}",
             col_alloc_sess:   nest_session_id,

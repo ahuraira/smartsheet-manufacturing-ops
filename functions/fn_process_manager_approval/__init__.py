@@ -10,6 +10,7 @@ from shared.logical_names import Sheet, Column
 from shared.blob_storage import get_blob_service_client, get_container_name, upload_json_blob
 from shared.audit import log_user_action, create_exception
 from shared.models import ActionType, ExceptionSeverity, ExceptionSource, ReasonCode
+from shared.helpers import now_uae, format_datetime_for_smartsheet
 from shared.queue_lock import AllocationLock
 
 logger = logging.getLogger(__name__)
@@ -36,8 +37,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             logger.error(f"[{trace_id}] Failed to create exception record")
         return func.HttpResponse("Invalid JSON", status_code=400)
 
-    action = req_body.get("action", "")
+    raw_action = req_body.get("action", "")
     approval_row_id = req_body.get("approval_row_id")
+
+    # Normalize action — Power Automate may forward button title ("Proceed to DO")
+    # or submit data value ("proceed_to_do") or any casing variant
+    normalized = raw_action.lower().strip().replace("_", " ")
+    if "proceed" in normalized or "do" in normalized:
+        action = "proceed_to_do"
+    elif "hold" in normalized or "wait" in normalized:
+        action = "hold_tag"
+    else:
+        action = raw_action  # Unknown — will be rejected below
+
     # If the user clicks 'Wait', we just log it and maybe leave it pending
     if action == "hold_tag":
         logger.info(f"[{trace_id}] Manager selected Hold for approval {approval_row_id}. Doing nothing.")
@@ -169,21 +181,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 logger.error(f"[{trace_id}] Failed to create exception record")
             return func.HttpResponse("LPO Reference missing.", status_code=500)
 
-        # 3. Gather Session IDs from CUT_SESSION
-        cut_session_rows = client.get_sheet(Sheet.CUT_SESSION).get("rows", [])
-        col_cs_tag = manifest.get_column_name(Sheet.CUT_SESSION, Column.CUT_SESSION.TAG_SHEET_ID)
-        col_cs_session = manifest.get_column_name(Sheet.CUT_SESSION, Column.CUT_SESSION.SESSION_ID)
-
-        cid_cs_tag = manifest.get_all_column_ids(Sheet.CUT_SESSION).get(col_cs_tag)
-        cid_cs_session = manifest.get_all_column_ids(Sheet.CUT_SESSION).get(col_cs_session)
-
+        # 3. Gather Session IDs from NESTING_LOG
+        nesting_rows = client.find_rows(Sheet.NESTING_LOG, Column.NESTING_LOG.TAG_SHEET_ID, all_tags[0]) if all_tags else []
         session_ids = []
-        for r in cut_session_rows:
-            cells = r.get("cells", [])
-            cs_tag_val = next((str(c.get("value", "")) for c in cells if str(c.get("columnId")) == str(cid_cs_tag)), "")
-            cs_sess_val = next((str(c.get("value", "")) for c in cells if str(c.get("columnId")) == str(cid_cs_session)), "")
-            if cs_tag_val in all_tags and cs_sess_val:
-                session_ids.append(cs_sess_val)
+        col_nl_session = manifest.get_column_name(Sheet.NESTING_LOG, Column.NESTING_LOG.NEST_SESSION_ID)
+        for r in nesting_rows:
+            sess_val = r.get(col_nl_session, "")
+            if sess_val:
+                session_ids.append(str(sess_val))
 
         # 4. Fetch JSON Blobs and Apply Margin Penalty
         service_client = get_blob_service_client()
@@ -256,24 +261,40 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         do_blob_path = f"{lpo_ref}/Deliveries/do_{delivery_id}.json"
         upload_json_blob(do_payload, do_blob_path, trace_id)
 
-        # 6. Save SINGLE line to DELIVERY_LOG
-        col_dl_id = manifest.get_column_name(Sheet.DELIVERY_LOG, "DELIVERY_ID")  # TODO: add Column.DELIVERY_LOG to logical_names.py
-        col_dl_tag = manifest.get_column_name(Sheet.DELIVERY_LOG, "TAG_SHEET_ID")  # TODO: add Column.DELIVERY_LOG to logical_names.py
-        col_dl_sap = manifest.get_column_name(Sheet.DELIVERY_LOG, "SAP_DO_NUMBER")  # TODO: add Column.DELIVERY_LOG to logical_names.py
-        col_dl_qty = manifest.get_column_name(Sheet.DELIVERY_LOG, "QUANTITY")  # TODO: add to logical_names.py
-        col_dl_lines = manifest.get_column_name(Sheet.DELIVERY_LOG, "LINES")  # TODO: add to logical_names.py
+        # 6. Recalculate margin with PM-adjusted penalty
+        from shared.costing_service import CostingService
+        from shared.adaptive_card_builder import build_do_creation_card
 
-        dl_cids = manifest.get_all_column_ids(Sheet.DELIVERY_LOG)
-        dl_row = []
-        if col_dl_id in dl_cids: dl_row.append({"columnId": dl_cids[col_dl_id], "value": delivery_id})
-        if col_dl_tag in dl_cids: dl_row.append({"columnId": dl_cids[col_dl_tag], "value": ", ".join(all_tags)})
-        if col_dl_sap in dl_cids: dl_row.append({"columnId": dl_cids[col_dl_sap], "value": "PENDING_SAP"})
-        if col_dl_qty in dl_cids: dl_row.append({"columnId": dl_cids[col_dl_qty], "value": total_inflated_area})
+        costing = CostingService(client)
+        adjusted_area = total_inflated_area
+        try:
+            margin_metrics = costing.calculate_margin(tag_sheet_id, adjusted_area, lpo_ref)
+        except Exception as e:
+            logger.warning(f"[{trace_id}] Margin recalculation failed, using basic figures: {e}")
+            margin_metrics = {
+                "total_cost_aed": 0.0,
+                "total_revenue_aed": adjusted_area * 25.0,  # fallback
+                "gm_pct": 0.0,
+            }
 
+        margin_summary = {
+            "adjusted_gm_pct": margin_metrics.get("gm_pct", 0.0),
+            "adjusted_revenue_aed": margin_metrics.get("total_revenue_aed", 0.0),
+            "total_cost_aed": margin_metrics.get("total_cost_aed", 0.0),
+        }
+
+        # 7. Save SINGLE line to DELIVERY_LOG using logical column names
         approver = req_body.get("approver", "system")
+        delivery_row = {
+            Column.DELIVERY_LOG.DELIVERY_ID: delivery_id,
+            Column.DELIVERY_LOG.TAG_SHEET_ID: ", ".join(all_tags),
+            Column.DELIVERY_LOG.SAP_DO_NUMBER: "PENDING_SAP",
+            Column.DELIVERY_LOG.QUANTITY: total_inflated_area,
+            Column.DELIVERY_LOG.LINES: len(master_do_lines),
+        }
 
         try:
-            client.add_rows_bulk(Sheet.DELIVERY_LOG, [{"toBottom": True, "cells": dl_row}])
+            client.add_row(Sheet.DELIVERY_LOG, delivery_row)
             log_user_action(
                 client=client,
                 user_id=approver,
@@ -291,21 +312,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     reason_code=ReasonCode.SYSTEM_ERROR,
                     severity=ExceptionSeverity.HIGH,
                     source=ExceptionSource.INGEST,
-                    message=f"fn_process_manager_approval: Failed to log to DELIVERY_LOG: {str(e)}",
+                    message=f"fn_process_manager_approval: Failed to log to DELIVERY_LOG: {e}",
                 )
             except Exception:
                 logger.error(f"[{trace_id}] Failed to create exception record")
 
-        # 7. Update MARGIN_APPROVAL_LOG to "Approved"
-        col_app_pct = manifest.get_column_name(Sheet.MARGIN_APPROVAL_LOG, "MANAGER_ADJUSTED_PCT")  # TODO: add to logical_names.py
-
+        # 8. Update MARGIN_APPROVAL_LOG to "Approved"
         approval_updates = {
             Column.MARGIN_APPROVAL_LOG.STATUS: "Approved",
+            Column.MARGIN_APPROVAL_LOG.PM_ADJUSTED_PCT: penalty_pct,
+            Column.MARGIN_APPROVAL_LOG.DECISION_DATE: format_datetime_for_smartsheet(now_uae()),
         }
-
-        col_ids = manifest.get_all_column_ids(Sheet.MARGIN_APPROVAL_LOG)
-        if col_app_pct and col_app_pct in col_ids:
-            approval_updates["MANAGER_ADJUSTED_PCT"] = penalty_pct  # TODO: add to logical_names.py
 
         try:
             client.update_row(Sheet.MARGIN_APPROVAL_LOG, app_smartsheet_row_id, approval_updates)
@@ -327,12 +344,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     reason_code=ReasonCode.SYSTEM_ERROR,
                     severity=ExceptionSeverity.HIGH,
                     source=ExceptionSource.INGEST,
-                    message=f"fn_process_manager_approval: Failed to update MARGIN_APPROVAL_LOG: {str(e)}",
+                    message=f"fn_process_manager_approval: Failed to update MARGIN_APPROVAL_LOG: {e}",
                 )
             except Exception:
                 logger.error(f"[{trace_id}] Failed to create exception record")
 
-        # 8. Update TAG_REGISTRY Status to Dispatched
+        # 9. Update TAG_REGISTRY Status to Dispatched
         if tag_smartsheet_ids_to_update:
             for tag_row_id in tag_smartsheet_ids_to_update:
                 try:
@@ -348,7 +365,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                             reason_code=ReasonCode.SYSTEM_ERROR,
                             severity=ExceptionSeverity.MEDIUM,
                             source=ExceptionSource.INGEST,
-                            message=f"fn_process_manager_approval: Failed to dispatch tag row {tag_row_id}: {str(e)}",
+                            message=f"fn_process_manager_approval: Failed to dispatch tag {tag_row_id}: {e}",
                         )
                     except Exception:
                         logger.error(f"[{trace_id}] Failed to create exception record")
@@ -363,8 +380,98 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 trace_id=trace_id,
             )
 
+        # 10. Gather consumption data for all tags (split production vs accessories)
+        from shared.allocation_service import _parse_rows
+        from shared.helpers import parse_float_safe
+
+        production_lines = []
+        accessory_lines = []
+        try:
+            cons_rows = _parse_rows(client.get_sheet(Sheet.CONSUMPTION_LOG))
+            col_cons_tag = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.TAG_SHEET_ID)
+            col_cons_mat = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.MATERIAL_CODE)
+            col_cons_qty = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.QUANTITY)
+            col_cons_uom = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.UOM)
+            col_cons_type = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.CONSUMPTION_TYPE)
+            col_cons_date = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.CONSUMPTION_DATE)
+            col_cons_id = manifest.get_column_name(Sheet.CONSUMPTION_LOG, Column.CONSUMPTION_LOG.CONSUMPTION_ID)
+
+            for row in cons_rows:
+                if row.get(col_cons_tag) in all_tags:
+                    line = {
+                        "consumption_id": row.get(col_cons_id, ""),
+                        "material_code": row.get(col_cons_mat, ""),
+                        "quantity": parse_float_safe(row.get(col_cons_qty), default=0.0),
+                        "uom": row.get(col_cons_uom, ""),
+                        "type": row.get(col_cons_type, ""),
+                        "date": row.get(col_cons_date, ""),
+                    }
+                    if str(line["type"]).lower() in ("accessory", "accessories"):
+                        accessory_lines.append(line)
+                    else:
+                        production_lines.append(line)
+
+            logger.info(f"[{trace_id}] Gathered {len(production_lines)} production + {len(accessory_lines)} accessory consumption lines")
+        except Exception as e:
+            logger.warning(f"[{trace_id}] Failed to fetch consumption data for DO card: {e}")
+
+        # 11. Send DO Creation Card to Supervisor / Teams Channel
+        try:
+            do_card = build_do_creation_card(
+                delivery_id=delivery_id,
+                lpo_reference=lpo_ref,
+                tags=all_tags,
+                total_billed_area=total_inflated_area,
+                penalty_pct=penalty_pct,
+                margin_summary=margin_summary,
+                approval_row_id=str(approval_row_id),
+                production_lines=production_lines,
+                accessory_lines=accessory_lines,
+            )
+
+            import os
+            import requests
+            do_webhook_url = os.environ.get("POWER_AUTOMATE_DO_CREATION_URL", "")
+            if not do_webhook_url:
+                # Try reading from config
+                try:
+                    config_row = client.find_row(Sheet.CONFIG, Column.CONFIG.CONFIG_KEY, "POWER_AUTOMATE_DO_CREATION_URL")
+                    if config_row:
+                        col_val = manifest.get_column_name(Sheet.CONFIG, Column.CONFIG.CONFIG_VALUE)
+                        do_webhook_url = str(config_row.get(col_val, ""))
+                except Exception:
+                    pass
+
+            if do_webhook_url:
+                payload = {
+                    "card_json": do_card,
+                    "delivery_id": delivery_id,
+                    "lpo_reference": lpo_ref,
+                    "tags": all_tags,
+                    "trace_id": trace_id,
+                }
+                resp = requests.post(do_webhook_url, json=payload, timeout=10)
+                resp.raise_for_status()
+                logger.info(f"[{trace_id}] DO creation card sent to supervisor for {delivery_id}")
+            else:
+                logger.warning(f"[{trace_id}] POWER_AUTOMATE_DO_CREATION_URL not configured — DO card not sent")
+        except Exception as e:
+            logger.error(f"[{trace_id}] Failed to send DO creation card: {e}")
+            try:
+                create_exception(
+                    client=client,
+                    trace_id=trace_id,
+                    reason_code=ReasonCode.SYSTEM_ERROR,
+                    severity=ExceptionSeverity.MEDIUM,
+                    source=ExceptionSource.INGEST,
+                    message=f"fn_process_manager_approval: Failed to send DO creation card: {e}",
+                )
+            except Exception:
+                logger.error(f"[{trace_id}] Failed to create exception record")
+
     return func.HttpResponse(json.dumps({
         "status": "success",
         "delivery_id": delivery_id,
-        "blob_path": do_blob_path
+        "blob_path": do_blob_path,
+        "margin_summary": margin_summary,
     }), mimetype="application/json")

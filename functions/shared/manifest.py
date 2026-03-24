@@ -30,8 +30,6 @@ import json
 import logging
 from typing import Dict, Optional, Any
 from pathlib import Path
-from datetime import datetime
-
 logger = logging.getLogger(__name__)
 
 
@@ -200,7 +198,8 @@ class WorkspaceManifest:
         if not save_path:
             raise ManifestError("No path specified for saving manifest")
         
-        self._data["_meta"]["generated_at"] = datetime.utcnow().isoformat()
+        from .helpers import now_uae
+        self._data["_meta"]["generated_at"] = now_uae().isoformat()
         
         with open(save_path, "w", encoding="utf-8") as f:
             json.dump(self._data, f, indent=2, ensure_ascii=False)

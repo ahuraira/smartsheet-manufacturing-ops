@@ -41,6 +41,7 @@ from shared import (
     AllocationSummary,
     PendingItemsResponse,
     TagChoice,
+    now_uae,
 )
 from shared.helpers import parse_float_safe
 from shared.manifest import get_manifest
@@ -143,7 +144,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # 7. Build response
         response = PendingItemsResponse(
             trace_id=trace_id,
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=now_uae().isoformat(),
             pending_tags=pending_tags,
             allow_stock_submission=True,
             tag_choices=tag_choices,

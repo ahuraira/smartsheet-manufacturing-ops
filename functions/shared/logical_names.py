@@ -56,7 +56,7 @@ class Sheet:
     ALLOCATION_LOG = "ALLOCATION_LOG"
     
     # 04. Production and Delivery
-    MARGIN_APPROVAL_LOG = "MARGIN_APPROVAL_LOG"
+    MARGIN_APPROVAL_LOG = "06C_MARGIN_APPROVAL_LOG"
     CONSUMPTION_LOG = "CONSUMPTION_LOG"
     REMNANT_LOG = "REMNANT_LOG"
     FILLER_LOG = "FILLER_LOG"
@@ -151,6 +151,7 @@ class Column:
         NUMBER_OF_DELIVERIES = "NUMBER_OF_DELIVERIES"
         SOURCE_FILE_HASH = "SOURCE_FILE_HASH"
         CLIENT_REQUEST_ID = "CLIENT_REQUEST_ID"
+        PLANNED_GM_PCT = "PLANNED_GM_PCT"
         MARGIN_PCT = "MARGIN_PCT"
         FOLDER_URL = "FOLDER_URL"
         CREATED_BY = "CREATED_BY"
@@ -169,6 +170,7 @@ class Column:
         WASTAGE_CONSIDERED_IN_COSTING = "WASTAGE_CONSIDERED_IN_COSTING"
         PRICE_PER_SQM = "PRICE_PER_SQM"
         PO_QUANTITY_SQM = "PO_QUANTITY_SQM"
+        PLANNED_GM_PCT = "PLANNED_GM_PCT"
         PO_VALUE = "PO_VALUE"
         TERMS_OF_PAYMENT = "TERMS_OF_PAYMENT"
         REMARKS = "REMARKS"
@@ -206,7 +208,7 @@ class Column:
         REMARKS = "REMARKS"
         FILE_HASH = "FILE_HASH"
         CLIENT_REQUEST_ID = "CLIENT_REQUEST_ID"
-        TOTAL_AREA_SQM = "TOTAL_AREA_SQM"
+        TOTAL_AREA_SQM = "ESTIMATED_QUANTITY"  # Maps to "Estimated Quantity" in manifest
     
     class TAG_SHEET_STAGING:
         """02h Tag Sheet Staging columns."""
@@ -309,6 +311,7 @@ class Column:
         NESTING_DESCRIPTION = "NESTING_DESCRIPTION"
         CANONICAL_CODE = "CANONICAL_CODE"
         DEFAULT_SAP_CODE = "DEFAULT_SAP_CODE"
+        SAP_DESCRIPTION = "SAP_DESCRIPTION"
         UOM = "UOM"
         SAP_UOM = "SAP_UOM"
         CONVERSION_FACTOR = "CONVERSION_FACTOR"
@@ -409,19 +412,23 @@ class Column:
         RAW_UOM = "RAW_UOM"                  # Physical UOM (e.g. m) — for production team
     
     class MARGIN_APPROVAL_LOG:
-        """04 Margin Approval Log columns."""
+        """06C Margin Approval Log columns."""
         APPROVAL_ID = "APPROVAL_ID"
         TAG_SHEET_ID = "TAG_SHEET_ID"
         LPO_ID = "LPO_ID"
-        MATERIAL_COST_AED = "MATERIAL_COST_AED"
-        OTHER_COSTS_AED = "OTHER_COSTS_AED"
-        GM_EXC_TAX_PCT = "GM_EXC_TAX_PCT"
-        CORP_TAX_AED = "CORP_TAX_AED"
-        TARGET_MARGIN_VARIANCE_PCT = "TARGET_MARGIN_VARIANCE_PCT"
+        TOTAL_COST = "TOTAL_COST"
+        ACCESSORY_COST = "ACCESSORY_COST"
+        EQ_ACCESSORY_SQM = "EQ_ACCESSORY_SQM"
+        BASELINE_MARGIN_PCT = "BASELINE_MARGIN_PCT"
+        PM_ADJUSTED_PCT = "PM_ADJUSTED_PCT"
+        TARGET_MARGIN_PCT = "TARGET_MARGIN_PCT"
+        FINAL_MARGIN_PCT = "FINAL_MARGIN_PCT"
         STATUS = "STATUS"
         CLIENT_REQUEST_ID = "CLIENT_REQUEST_ID"
+        CREATED_DATE = "CREATED_DATE"
+        DECISION_DATE = "DECISION_DATE"
+        REMARKS = "REMARKS"
         CARD_JSON = "CARD_JSON"
-        CREATED_AT = "CREATED_AT"
 
     class CONSUMPTION_LOG:
         """06 Consumption Log columns."""

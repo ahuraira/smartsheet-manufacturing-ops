@@ -131,8 +131,8 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
         # Optional fields - extract all available
         customer_lpo_ref = get_cell_value_by_logical_name(row_data, sheet_logical, "CUSTOMER_LPO_REF")
         terms_of_payment = get_cell_value_by_logical_name(row_data, sheet_logical, "TERMS_OF_PAYMENT")
-        wastage_pct = get_cell_value_by_logical_name(row_data, sheet_logical, "WASTAGE_PCT")
-        hold_reason = get_cell_value_by_logical_name(row_data, sheet_logical, "HOLD_REASON")
+        wastage_pct = get_cell_value_by_logical_name(row_data, sheet_logical, "WASTAGE_CONSIDERED_IN_COSTING")
+        planned_gm_pct = get_cell_value_by_logical_name(row_data, sheet_logical, "PLANNED_GM_PCT")
         remarks = get_cell_value_by_logical_name(row_data, sheet_logical, "REMARKS")
         
         # =====================================================================
@@ -163,7 +163,7 @@ def handle_lpo_ingest(event: RowEvent) -> DispatchResult:
                 customer_lpo_ref=customer_lpo_ref,
                 terms_of_payment=terms_of_payment or "30 Days Credit",
                 wastage_pct=normalize_percentage(wastage_pct, 0.0),  # v1.6.7: normalize 18, 0.18, 18%
-                hold_reason=hold_reason,
+                planned_gm_pct=parse_float_safe(planned_gm_pct, default=None),
                 remarks=remarks,
                 # Attachments
                 files=files,

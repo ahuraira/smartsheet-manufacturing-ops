@@ -19,7 +19,7 @@ Usage:
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from shared.helpers import now_uae, format_datetime_for_smartsheet
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -235,7 +235,7 @@ class BOMOrchestrator:
                 {"columnId": col_ids["CANONICAL_UOM"], "value": line.canonical_uom or ""},
                 {"columnId": col_ids["MAPPING_DECISION"], "value": line.mapping_decision or ""},
                 {"columnId": col_ids["HISTORY_ID"], "value": line.history_id or ""},
-                {"columnId": col_ids["CREATED_AT"], "value": datetime.now(timezone.utc).isoformat()},
+                {"columnId": col_ids["CREATED_AT"], "value": format_datetime_for_smartsheet(now_uae())},
                 {"columnId": col_ids["TRACE_ID"], "value": trace_id},
             ]
             rows.append({"toBottom": True, "cells": cells})

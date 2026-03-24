@@ -1,10 +1,10 @@
 import logging
 import json
-from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from shared.smartsheet_client import SmartsheetClient
 from shared.logical_names import Sheet, Column
+from shared.helpers import now_uae, format_datetime_for_smartsheet
 from .models import NestingExecutionRecord, AttachmentInfo
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ class NestingLogger:
         row_data = {
             Column.NESTING_LOG.NEST_SESSION_ID: nest_session_id,
             Column.NESTING_LOG.TAG_SHEET_ID: tag_id,
-            Column.NESTING_LOG.TIMESTAMP: datetime.utcnow().isoformat(),
+            Column.NESTING_LOG.TIMESTAMP: format_datetime_for_smartsheet(now_uae()),
             Column.NESTING_LOG.BRAND: brand or "",  # v1.6.7: Now populated
             Column.NESTING_LOG.SHEETS_CONSUMED_VIRTUAL: inventory_impact.utilized_sheets_count,
             Column.NESTING_LOG.EXPECTED_CONSUMPTION_M2: inventory_impact.gross_area_m2,

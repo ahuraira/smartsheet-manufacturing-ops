@@ -360,8 +360,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
         
         # 7. Create schedule record
+        from shared.helpers import now_uae
         schedule_id = generate_next_schedule_id(client)
-        now = format_datetime_for_smartsheet(datetime.utcnow())
+        now = format_datetime_for_smartsheet(now_uae())
         
         schedule_data = {
             Column.PRODUCTION_PLANNING.SCHEDULE_ID: schedule_id,

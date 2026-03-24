@@ -29,7 +29,8 @@ def mock_manifest():
         ("01H_LPO_INGESTION", "PO_QUANTITY_SQM"): 104,
         ("01H_LPO_INGESTION", "PRICE_PER_SQM"): 105,
         ("01H_LPO_INGESTION", "TERMS_OF_PAYMENT"): 106,
-        ("01H_LPO_INGESTION", "WASTAGE_PCT"): 107,
+        ("01H_LPO_INGESTION", "WASTAGE_CONSIDERED_IN_COSTING"): 107,
+        ("01H_LPO_INGESTION", "PLANNED_GM_PCT"): 109,
         ("01H_LPO_INGESTION", "REMARKS"): 108,
     }.get((sheet, col))
     return manifest
@@ -64,7 +65,8 @@ class TestLPOIngestHandler:
             105: 10.5,
             106: "60 Days",
             107: 0.05,
-            108: "Urgent delivery"
+            108: "Urgent delivery",
+            109: 15.0
         }
         
         # Setup attachments

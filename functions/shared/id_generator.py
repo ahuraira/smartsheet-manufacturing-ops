@@ -19,8 +19,8 @@ import logging
 import time
 import random
 from typing import Optional
-from datetime import datetime
 
+from .helpers import now_uae
 from .sheet_config import ConfigKey, ID_PREFIXES, SheetName, ColumnName
 
 logger = logging.getLogger(__name__)
@@ -200,7 +200,7 @@ class SequenceGenerator:
         row_data = {
             ColumnName.CONFIG_KEY: sequence_key.value,
             ColumnName.CONFIG_VALUE: str(initial_value),
-            ColumnName.EFFECTIVE_FROM: datetime.utcnow().strftime("%Y-%m-%d"),
+            ColumnName.EFFECTIVE_FROM: now_uae().strftime("%Y-%m-%d"),
             ColumnName.CHANGED_BY: "system"
         }
         result = self.client.add_row(SheetName.CONFIG.value, row_data)
