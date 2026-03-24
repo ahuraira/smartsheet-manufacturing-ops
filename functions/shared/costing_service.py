@@ -273,17 +273,31 @@ class CostingService:
         # 9. Corporate Tax (9%)
         corp_tax = gross_profit * 0.09 if gross_profit > 0 else 0.0
 
-        # 10. Required area variation to hit target margin
+        # 10. Required penalty % on production area to hit target margin
+        #     Penalty applies to production area only; accessories are fixed.
+        #     target_revenue = total_cost / (1 - target_margin)
+        #     revenue_from_accessories = eq_accessory_sqm × price (already locked in)
+        #     required_production_revenue = target_revenue - revenue_from_accessories
+        #     required_production_sqm = required_production_revenue / price
+        #     penalty_pct = (required_production_sqm / delivered_sqm - 1) × 100
         if target_margin_pct < 1.0:
             target_revenue = total_cost / (1.0 - target_margin_pct)
         else:
             target_revenue = total_cost
-        required_billing_area = target_revenue / selling_price_per_sqm if selling_price_per_sqm > 0 else billable_area
 
-        if billable_area > 0:
-            area_variation_pct = (required_billing_area / billable_area) - 1.0
+        accessory_revenue = eq_accessory_sqm * selling_price_per_sqm
+        required_production_revenue = target_revenue - accessory_revenue
+        if selling_price_per_sqm > 0:
+            required_production_sqm = required_production_revenue / selling_price_per_sqm
         else:
-            area_variation_pct = 0.0
+            required_production_sqm = delivered_sqm
+
+        if delivered_sqm > 0:
+            production_variation_pct = (required_production_sqm / delivered_sqm) - 1.0
+        else:
+            production_variation_pct = 0.0
+
+        required_billing_area = required_production_sqm + eq_accessory_sqm
 
         return {
             "delivered_sqm": round(delivered_sqm, 2),
@@ -302,6 +316,6 @@ class CostingService:
             "corp_tax_aed": round(corp_tax, 2),
             "target_margin_pct": round(target_margin_pct, 4),
             "required_billing_area": round(required_billing_area, 2),
-            "area_variation_pct": round(area_variation_pct, 4),
-            "suggested_manager_penalty_pct": round(area_variation_pct * 100, 2),
+            "area_variation_pct": round(production_variation_pct, 4),
+            "suggested_manager_penalty_pct": round(production_variation_pct * 100, 2),
         }
