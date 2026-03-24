@@ -40,6 +40,7 @@ functions/task.md
 
 # Azure Functions
 functions/local.settings.json
+functions/local.settings.*.json
 function_adapter/local.settings.json
 .python_packages/
 
@@ -82,5 +83,6 @@ functions/.venv
 #Tests
 functions/tests/conftest.py.bak
 
-#Scripts
-scripts/
+# Scripts (keep deployment scripts, ignore generated outputs)
+scripts/*.log
+scripts/*.tmp
