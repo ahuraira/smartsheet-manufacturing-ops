@@ -26,7 +26,7 @@ Response:
 import logging
 import json
 import azure.functions as func
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from typing import List
 
 import sys
@@ -83,8 +83,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         columns    = sheet_data.get("columns", [])
         col_id_to_name = {col["id"]: col["title"] for col in columns}
 
-        # 5. Filter rows
-        today     = date.today()
+        # 5. Filter rows (use UAE timezone for correct date)
+        today     = now_uae().date()
         yesterday = today - timedelta(days=1)
 
         pending_tags: List[AllocationSummary] = []
