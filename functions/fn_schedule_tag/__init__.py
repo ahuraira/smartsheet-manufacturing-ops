@@ -404,6 +404,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 })
             except Exception as tag_update_err:
                 logger.warning(f"[{trace_id}] Could not update tag planning info: {tag_update_err}")
+                create_exception(
+                    client=client, trace_id=trace_id,
+                    reason_code=ReasonCode.SYSTEM_ERROR,
+                    severity=ExceptionSeverity.LOW,
+                    source=ExceptionSource.INGEST,
+                    related_tag_id=request.tag_id,
+                    message=f"Failed to update tag planning info: {tag_update_err}",
+                )
         
         # 9. Update LPO_MASTER.PLANNED_QUANTITY
         lpo_row_id = lpo.get("row_id")
@@ -417,6 +425,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 })
             except Exception as lpo_update_err:
                 logger.warning(f"[{trace_id}] Could not update LPO planned quantity: {lpo_update_err}")
+                create_exception(
+                    client=client, trace_id=trace_id,
+                    reason_code=ReasonCode.SYSTEM_ERROR,
+                    severity=ExceptionSeverity.LOW,
+                    source=ExceptionSource.INGEST,
+                    related_tag_id=request.tag_id,
+                    message=f"Failed to update LPO planned quantity: {lpo_update_err}",
+                )
         
         # 10. Calculate T-1 deadline (cutoff at 18:00 previous day)
         try:
@@ -463,7 +479,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "aslam.ca@tte.ae;manu.nair@tte.ae;sheri.wilson@tte.ae;sumit.kavade@tte.ae",
             ).split(";")
 
-            send_notification(
+            notify_result = send_notification(
                 to=production_team,
                 subject=f"Nesting Required: {request.tag_id} scheduled for {request.planned_date}",
                 body=(
@@ -482,8 +498,25 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 importance="high",
                 trace_id=trace_id,
             )
+            if not notify_result.success:
+                create_exception(
+                    client=client, trace_id=trace_id,
+                    reason_code=ReasonCode.SYSTEM_ERROR,
+                    severity=ExceptionSeverity.LOW,
+                    source=ExceptionSource.INGEST,
+                    related_tag_id=request.tag_id,
+                    message=f"Schedule notification failed: {notify_result.error_message}",
+                )
         except Exception as notify_err:
             logger.warning(f"[{trace_id}] Failed to send schedule notification: {notify_err}")
+            create_exception(
+                client=client, trace_id=trace_id,
+                reason_code=ReasonCode.SYSTEM_ERROR,
+                severity=ExceptionSeverity.LOW,
+                source=ExceptionSource.INGEST,
+                related_tag_id=request.tag_id,
+                message=f"Schedule notification failed: {notify_err}",
+            )
 
         return func.HttpResponse(
             json.dumps({
