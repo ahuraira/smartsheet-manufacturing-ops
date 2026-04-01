@@ -93,6 +93,7 @@ SHEET_NAME_MAP = {
     "06 Consumption Log": "CONSUMPTION_LOG",
     "06a Remnant Log": "REMNANT_LOG",
     "06b Filler Log": "FILLER_LOG",
+    "06c Margin Approval Log": "06C_MARGIN_APPROVAL_LOG",
     "07 Delivery Log": "DELIVERY_LOG",
     "08 Invoice Log": "INVOICE_LOG",
     "90 Inventory Txn Log": "INVENTORY_TXN_LOG",
@@ -106,7 +107,8 @@ SHEET_NAME_MAP = {
     # 05. Material Mapping
     "05a Material Master": "MATERIAL_MASTER",
     "05b Mapping Override": "MAPPING_OVERRIDE",
-    "05c LPO Material Brand Map": "LPO_MATERIAL_BRAND_MAP",
+    "05c SAP Material Catalog": "05C_SAP_MATERIAL_CATALOG",
+    "05c LPO Material Brand Map": "LPO_MATERIAL_BRAND_MAP",  # Legacy name
     "05d Mapping History": "MAPPING_HISTORY",
     "05e Mapping Exception": "MAPPING_EXCEPTION",
     "06a Parsed BOM": "PARSED_BOM",

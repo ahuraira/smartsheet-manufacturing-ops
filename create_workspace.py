@@ -2,6 +2,8 @@
 Smartsheet Workspace Creator
 Creates a new workspace with all sheets from the current dev environment.
 Uses metadata JSON to replicate the complete structure.
+
+Sheet definitions match workspace_manifest.json (source of truth).
 """
 
 import os
@@ -32,19 +34,19 @@ FOLDER_STRUCTURE = [
     "02. Tag Sheet Registry",
     "03. Production Planning",
     "04. Production and Delivery",
-    "05. Material Mapping"
+    "05. Material Mapping",
 ]
 
-# Sheet definitions based on current metadata
+# Sheet definitions matching workspace_manifest.json
 SHEET_DEFINITIONS = {
-    # Root level sheets
+    # ==================== Root level sheets ====================
     "00 Reference Data": {
         "folder": None,
         "columns": [
             {"title": "Customer Name", "type": "TEXT_NUMBER", "primary": True},
             {"title": "Terms of Payment ID", "type": "TEXT_NUMBER"},
             {"title": "Terms of Payment", "type": "TEXT_NUMBER"},
-            {"title": "Currency Code", "type": "TEXT_NUMBER"}
+            {"title": "Currency Code", "type": "TEXT_NUMBER"},
         ]
     },
     "00a Config": {
@@ -53,24 +55,40 @@ SHEET_DEFINITIONS = {
             {"title": "config_key", "type": "TEXT_NUMBER", "primary": True},
             {"title": "config_value", "type": "TEXT_NUMBER"},
             {"title": "effective_from", "type": "TEXT_NUMBER"},
-            {"title": "changed_by", "type": "TEXT_NUMBER"}
+            {"title": "changed_by", "type": "TEXT_NUMBER"},
         ]
     },
-    
-    # 01. Commercial and Demand
-    "01 LPO Master LOG": {
+    "00b Machine Master": {
+        "folder": None,
+        "columns": [
+            {"title": "Machine ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Name", "type": "TEXT_NUMBER"},
+            {"title": "Vacuum Bed Dimensions", "type": "TEXT_NUMBER"},
+            {"title": "Sqm per hour", "type": "TEXT_NUMBER"},
+            {"title": "Available Shifts", "type": "TEXT_NUMBER"},
+            {"title": "Status", "type": "PICKLIST", "options": ["Operational", "Maintenance"]},
+        ]
+    },
+
+    # ==================== 01. Commercial and Demand ====================
+    "01 LPO Audit LOG": {
         "folder": "01. Commercial and Demand",
         "columns": [
-            {"title": "LPO ID", "type": "TEXT_NUMBER", "systemColumnType": "AUTO_NUMBER"},
+            {"title": "Snapshot Timestamp", "type": "DATE"},
+            {"title": "Action Type", "type": "TEXT_NUMBER"},
+            {"title": "Actor", "type": "TEXT_NUMBER"},
+            {"title": "LPO ID", "type": "TEXT_NUMBER"},
             {"title": "Customer LPO Ref", "type": "TEXT_NUMBER", "primary": True},
             {"title": "SAP Reference", "type": "TEXT_NUMBER"},
             {"title": "Customer Name", "type": "TEXT_NUMBER"},
             {"title": "Project Name", "type": "TEXT_NUMBER"},
             {"title": "LPO Status", "type": "PICKLIST", "options": ["Draft", "Pending Approval", "Active", "On Hold", "Closed"]},
             {"title": "Brand", "type": "PICKLIST", "options": ["KIMMCO", "WTI"]},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
             {"title": "Wastage Considered in Costing", "type": "TEXT_NUMBER"},
             {"title": "Price (AED per Sqm)", "type": "TEXT_NUMBER"},
             {"title": "PO Quantity (Sqm)", "type": "TEXT_NUMBER"},
+            {"title": "Area Type", "type": "PICKLIST", "options": ["Internal", "External"]},
             {"title": "PO Value", "type": "TEXT_NUMBER"},
             {"title": "Terms of Payment", "type": "PICKLIST", "options": ["30 Days Credit", "60 Days Credit", "90 Days Credit", "Immediate Payment"]},
             {"title": "Hold Reason", "type": "TEXT_NUMBER"},
@@ -81,40 +99,85 @@ SHEET_DEFINITIONS = {
             {"title": "PO Balance Quantity", "type": "TEXT_NUMBER"},
             {"title": "Balance Value (AED)", "type": "TEXT_NUMBER"},
             {"title": "Current Status", "type": "TEXT_NUMBER"},
-            {"title": "Remarks", "type": "TEXT_NUMBER"},
             {"title": "Delivered Date", "type": "DATE"},
             {"title": "Approval Status", "type": "PICKLIST", "options": ["Submitted", "Approved", "Declined"]},
             {"title": "Number of Deliveries", "type": "TEXT_NUMBER"},
             {"title": "Source File Hash", "type": "TEXT_NUMBER"},
             {"title": "Folder URL", "type": "TEXT_NUMBER"},
+            {"title": "Created By", "type": "TEXT_NUMBER"},
+            {"title": "Updated at", "type": "TEXT_NUMBER"},
+            {"title": "Updated By", "type": "TEXT_NUMBER"},
             {"title": "Client Request ID", "type": "TEXT_NUMBER"},
-            {"title": "Created At", "type": "DATETIME"},
-            {"title": "Updated At", "type": "DATETIME"}
         ]
     },
-    "01 LPO Audit LOG": {
+    "01 LPO Master LOG": {
         "folder": "01. Commercial and Demand",
         "columns": [
-            {"title": "Snapshot Timestamp", "type": "DATE"},
-            {"title": "Action Type", "type": "TEXT_NUMBER"},
-            {"title": "Actor", "type": "TEXT_NUMBER"},
-            {"title": "LPO ID", "type": "TEXT_NUMBER", "systemColumnType": "AUTO_NUMBER"},
+            {"title": "LPO ID", "type": "TEXT_NUMBER"},
             {"title": "Customer LPO Ref", "type": "TEXT_NUMBER", "primary": True},
             {"title": "SAP Reference", "type": "TEXT_NUMBER"},
             {"title": "Customer Name", "type": "TEXT_NUMBER"},
             {"title": "Project Name", "type": "TEXT_NUMBER"},
             {"title": "LPO Status", "type": "PICKLIST", "options": ["Draft", "Pending Approval", "Active", "On Hold", "Closed"]},
             {"title": "Brand", "type": "PICKLIST", "options": ["KIMMCO", "WTI"]},
-            {"title": "Remarks", "type": "TEXT_NUMBER"}
+            {"title": "Wastage Considered in Costing", "type": "TEXT_NUMBER"},
+            {"title": "Price per Sqm", "type": "TEXT_NUMBER"},
+            {"title": "PO Quantity (Sqm)", "type": "TEXT_NUMBER"},
+            {"title": "Area Type", "type": "PICKLIST", "options": ["Internal", "External"]},
+            {"title": "Project Category", "type": "PICKLIST", "options": ["Villas (Residential)", "High-Rise (Residential)", "High-Rise (Commercial)", "Shell and Core (Commercial)", "Shell and Core (Residential)", "Warehouse", "Mid-Rise (Residential)", "Industrial"]},
+            {"title": "PO Value", "type": "TEXT_NUMBER"},
+            {"title": "Planned GM pct", "type": "TEXT_NUMBER"},
+            {"title": "Terms of Payment", "type": "PICKLIST", "options": ["30 Days Credit", "60 Days Credit", "90 Days Credit", "Immediate Payment"]},
+            {"title": "Hold Reason", "type": "TEXT_NUMBER"},
+            {"title": "Total Allocated Cost", "type": "TEXT_NUMBER"},
+            {"title": "Delivered Quantity (Sqm)", "type": "TEXT_NUMBER"},
+            {"title": "Delivered Value", "type": "TEXT_NUMBER"},
+            {"title": "Planned Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Allocated Quantity", "type": "TEXT_NUMBER"},
+            {"title": "PO Balance Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Balance Value (AED)", "type": "TEXT_NUMBER"},
+            {"title": "Current Status", "type": "TEXT_NUMBER"},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
+            {"title": "Delivered Date", "type": "DATE"},
+            {"title": "Approval Status", "type": "PICKLIST", "options": ["Submitted", "Approved", "Declined"]},
+            {"title": "Number of Deliveries", "type": "TEXT_NUMBER"},
+            {"title": "Source File Hash", "type": "TEXT_NUMBER"},
+            {"title": "Client Request ID", "type": "TEXT_NUMBER"},
+            {"title": "Folder URL", "type": "TEXT_NUMBER"},
+            {"title": "Created By", "type": "TEXT_NUMBER"},
+            {"title": "Updated at", "type": "TEXT_NUMBER"},
+            {"title": "Updated By", "type": "TEXT_NUMBER"},
+            {"title": "Margin pct", "type": "TEXT_NUMBER"},
         ]
     },
-    
-    # 02. Tag Sheet Registry
-    "Tag Sheet Registry": {
+    "01h LPO Ingestion": {
+        "folder": "01. Commercial and Demand",
+        "columns": [
+            {"title": "Customer LPO Ref", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "SAP Reference", "type": "TEXT_NUMBER"},
+            {"title": "Customer Name", "type": "TEXT_NUMBER"},
+            {"title": "Project Name", "type": "TEXT_NUMBER"},
+            {"title": "Brand", "type": "PICKLIST", "options": ["KIMMCO", "WTI"]},
+            {"title": "Wastage Considered in Costing", "type": "TEXT_NUMBER"},
+            {"title": "Price per Sqm", "type": "TEXT_NUMBER"},
+            {"title": "PO Quantity (Sqm)", "type": "TEXT_NUMBER"},
+            {"title": "Planned GM pct", "type": "TEXT_NUMBER"},
+            {"title": "Area Type", "type": "PICKLIST", "options": ["Internal", "External"]},
+            {"title": "PO Value", "type": "TEXT_NUMBER"},
+            {"title": "Project Category", "type": "PICKLIST", "options": ["Villas (Residential)", "High-Rise (Residential)", "High-Rise (Commercial)", "Shell and Core (Commercial)", "Shell and Core (Residential)", "Warehouse", "Mid-Rise (Residential)", "Industrial"]},
+            {"title": "Terms of Payment", "type": "PICKLIST", "options": ["30 Days Credit", "60 Days Credit", "90 Days Credit", "Immediate Payment"]},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
+            {"title": "Delivered Date", "type": "DATE"},
+            {"title": "Created By", "type": "CONTACT_LIST"},
+        ]
+    },
+
+    # ==================== 02. Tag Sheet Registry ====================
+    "02 Tag Sheet Registry": {
         "folder": "02. Tag Sheet Registry",
         "columns": [
-            {"title": "Tag ID", "type": "TEXT_NUMBER", "systemColumnType": "AUTO_NUMBER"},
-            {"title": "Date Tag Sheet Received", "type": "DATETIME", "systemColumnType": "CREATED_DATE"},
+            {"title": "Tag ID", "type": "TEXT_NUMBER"},
+            {"title": "Date Tag Sheet Received", "type": "DATE"},
             {"title": "Tag Sheet Name/ Rev", "type": "TEXT_NUMBER", "primary": True},
             {"title": "Required Delivery Date", "type": "DATE"},
             {"title": "LPO SAP Reference Link", "type": "TEXT_NUMBER"},
@@ -128,18 +191,31 @@ SHEET_DEFINITIONS = {
             {"title": "Estimated Quantity", "type": "TEXT_NUMBER"},
             {"title": "Sheets Used", "type": "TEXT_NUMBER"},
             {"title": "Wastage Nested", "type": "TEXT_NUMBER"},
-            {"title": "Status", "type": "PICKLIST", "options": ["Draft", "Validate", "Sent to Nesting", "Nesting Complete", "Planned Queued", "WIP", "Complete", "Partial Dispatch", "Dispatched", "Closed", "Revision Pending", "Hold", "Cancelled"]},
+            {"title": "Status", "type": "PICKLIST", "options": ["Draft", "Validate", "Sent to Nesting", "Nesting Complete", "Planned Queued", "WIP", "Production Complete", "Partial Dispatch", "Dispatched", "Closed", "Revision Pending", "Hold", "Cancelled"]},
             {"title": "Planned Cut Date", "type": "DATE"},
             {"title": "Allocation Batch ID", "type": "TEXT_NUMBER"},
-            {"title": "Submitted By", "type": "CONTACT_LIST", "systemColumnType": "CREATED_BY"},
-            {"title": "Received Through", "type": "PICKLIST", "options": ["Email", "Whatsapp"]},
+            {"title": "Submitted By", "type": "TEXT_NUMBER"},
+            {"title": "Received Through", "type": "PICKLIST", "options": ["Email", "Whatsapp", "API"]},
             {"title": "Remarks", "type": "TEXT_NUMBER"},
             {"title": "File Hash", "type": "TEXT_NUMBER"},
-            {"title": "Client Request ID", "type": "TEXT_NUMBER"}
+            {"title": "Client Request ID", "type": "TEXT_NUMBER"},
         ]
     },
-    
-    # 03. Production Planning
+    "02h Tag Sheet Staging": {
+        "folder": "02. Tag Sheet Registry",
+        "columns": [
+            {"title": "Date Tag Sheet Received", "type": "DATE"},
+            {"title": "Tag Sheet Name/ Rev", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Required Delivery Date", "type": "DATE"},
+            {"title": "LPO SAP Reference Link", "type": "TEXT_NUMBER"},
+            {"title": "Location", "type": "TEXT_NUMBER"},
+            {"title": "Estimated Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Received Through", "type": "PICKLIST", "options": ["Email", "Whatsapp"]},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
+        ]
+    },
+
+    # ==================== 03. Production Planning ====================
     "03 Production Planning": {
         "folder": "03. Production Planning",
         "columns": [
@@ -147,22 +223,31 @@ SHEET_DEFINITIONS = {
             {"title": "Tag Sheet ID", "type": "TEXT_NUMBER"},
             {"title": "Planned Date", "type": "DATE"},
             {"title": "Shift", "type": "PICKLIST", "options": ["Morning", "Evening"]},
-            {"title": "Machine Assigned", "type": "PICKLIST", "options": ["1", "2"]},
-            {"title": "Allocation Status", "type": "PICKLIST", "options": ["Draft", "Approved", "Issued", "Complete"]}
+            {"title": "Machine Assigned", "type": "PICKLIST", "options": ["MACH-1", "MACH-2"]},
+            {"title": "Planned Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Status", "type": "PICKLIST", "options": ["Planned", "Released for Nesting", "Nesting Uploaded", "Allocated", "Cancelled"]},
+            {"title": "Created By", "type": "TEXT_NUMBER"},
+            {"title": "Created At", "type": "TEXT_NUMBER"},
+            {"title": "Updated By", "type": "TEXT_NUMBER"},
+            {"title": "Updated At", "type": "TEXT_NUMBER"},
+            {"title": "Client Request ID", "type": "TEXT_NUMBER"},
+            {"title": "Trace ID", "type": "TEXT_NUMBER"},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
         ]
     },
     "03h Production Planning Staging": {
         "folder": "03. Production Planning",
         "columns": [
-            {"title": "Tag Sheet ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Schedule ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Tag Sheet ID", "type": "PICKLIST"},
             {"title": "Planned Date", "type": "DATE"},
-            {"title": "Shift", "type": "PICKLIST", "options": ["Morning", "Evening", "Night"]},
-            {"title": "Machine Assigned", "type": "TEXT_NUMBER"},
+            {"title": "Shift", "type": "PICKLIST", "options": ["Morning", "Evening"]},
+            {"title": "Machine Assigned", "type": "PICKLIST", "options": ["MACH-1", "MACH-2"]},
             {"title": "Planned Quantity", "type": "TEXT_NUMBER"},
-            {"title": "Status", "type": "PICKLIST", "options": ["Pending", "Scheduled", "Failed"]},
-            {"title": "Requested By", "type": "CONTACT_LIST"},
-            {"title": "API Status", "type": "TEXT_NUMBER"},
-            {"title": "API Message", "type": "TEXT_NUMBER"}
+            {"title": "Status", "type": "PICKLIST", "options": ["Planned", "Released for Nesting", "Nesting Uploaded", "Allocated", "Blocked", "Cancelled"]},
+            {"title": "Response", "type": "TEXT_NUMBER"},
+            {"title": "Exception ID", "type": "TEXT_NUMBER"},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
         ]
     },
     "04 Nesting Execution Log": {
@@ -179,7 +264,7 @@ SHEET_DEFINITIONS = {
             {"title": "Remnant ID Generated", "type": "TEXT_NUMBER"},
             {"title": "Filler IDs Generated", "type": "TEXT_NUMBER"},
             {"title": "File Hash", "type": "TEXT_NUMBER"},
-            {"title": "Client Request ID", "type": "TEXT_NUMBER"}
+            {"title": "Client Request ID", "type": "TEXT_NUMBER"},
         ]
     },
     "05 Allocation Log": {
@@ -189,17 +274,22 @@ SHEET_DEFINITIONS = {
             {"title": "Tag Sheet ID", "type": "TEXT_NUMBER"},
             {"title": "Material Code", "type": "TEXT_NUMBER"},
             {"title": "Quantity", "type": "TEXT_NUMBER"},
+            {"title": "UOM", "type": "TEXT_NUMBER"},
             {"title": "Planned Date", "type": "DATE"},
             {"title": "Shift", "type": "PICKLIST", "options": ["Morning", "Evening"]},
-            {"title": "Status", "type": "PICKLIST", "options": ["Submitted", "Approved", "Released", "Expired"]},
+            {"title": "Status", "type": "PICKLIST", "options": ["Submitted", "Approved", "Released", "Partial Consumed", "Consumed", "Expired"]},
             {"title": "Stock Check Flag", "type": "PICKLIST", "options": ["Red", "Yellow", "Green"]},
             {"title": "Allocated At", "type": "DATE"},
             {"title": "Reserved Until", "type": "DATE"},
-            {"title": "Remarks", "type": "TEXT_NUMBER"}
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
+            {"title": "Nest Session ID", "type": "TEXT_NUMBER"},
+            {"title": "Nesting Description", "type": "TEXT_NUMBER"},
+            {"title": "Raw Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Raw UOM", "type": "TEXT_NUMBER"},
         ]
     },
-    
-    # 04. Production and Delivery
+
+    # ==================== 04. Production and Delivery ====================
     "06 Consumption Log": {
         "folder": "04. Production and Delivery",
         "columns": [
@@ -207,11 +297,16 @@ SHEET_DEFINITIONS = {
             {"title": "Tag Sheet ID", "type": "TEXT_NUMBER"},
             {"title": "Status", "type": "PICKLIST", "options": ["Submitted", "Approved", "Adjustment Requested"]},
             {"title": "Consumption Date", "type": "DATE"},
+            {"title": "Consumption Type", "type": "TEXT_NUMBER"},
             {"title": "Shift", "type": "PICKLIST", "options": ["Morning", "Evening"]},
             {"title": "Material Code", "type": "TEXT_NUMBER"},
             {"title": "Quantity", "type": "TEXT_NUMBER"},
+            {"title": "UOM", "type": "TEXT_NUMBER"},
+            {"title": "Raw Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Raw UOM", "type": "TEXT_NUMBER"},
             {"title": "Remnant ID", "type": "TEXT_NUMBER"},
-            {"title": "Remarks", "type": "TEXT_NUMBER"}
+            {"title": "Allocation ID", "type": "TEXT_NUMBER"},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
         ]
     },
     "06a Remnant Log": {
@@ -223,9 +318,9 @@ SHEET_DEFINITIONS = {
             {"title": "Material Code", "type": "TEXT_NUMBER"},
             {"title": "Dimensions", "type": "TEXT_NUMBER"},
             {"title": "Area m2", "type": "TEXT_NUMBER"},
-            {"title": "Created At", "type": "TEXT_NUMBER"},
+            {"title": "Created At", "type": "DATE"},
             {"title": "Consumption Date", "type": "DATE"},
-            {"title": "Remarks", "type": "TEXT_NUMBER"}
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
         ]
     },
     "06b Filler Log": {
@@ -239,9 +334,30 @@ SHEET_DEFINITIONS = {
             {"title": "Type", "type": "PICKLIST", "options": ["SCRAP", "SMALL_FILL"]},
             {"title": "Dimensions", "type": "TEXT_NUMBER"},
             {"title": "Area m2", "type": "TEXT_NUMBER"},
-            {"title": "Created At", "type": "TEXT_NUMBER"},
+            {"title": "Created At", "type": "DATE"},
             {"title": "Consumption Date", "type": "DATE"},
-            {"title": "Remarks", "type": "TEXT_NUMBER"}
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
+        ]
+    },
+    "06c Margin Approval Log": {
+        "folder": "04. Production and Delivery",
+        "columns": [
+            {"title": "Approval ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Tag Sheet ID", "type": "TEXT_NUMBER"},
+            {"title": "LPO ID", "type": "TEXT_NUMBER"},
+            {"title": "Total Cost", "type": "TEXT_NUMBER"},
+            {"title": "Accessory Cost", "type": "TEXT_NUMBER"},
+            {"title": "Eq Accessory Sqm", "type": "TEXT_NUMBER"},
+            {"title": "Baseline Margin pct", "type": "TEXT_NUMBER"},
+            {"title": "PM Adjusted pct", "type": "TEXT_NUMBER"},
+            {"title": "Target Margin pct", "type": "TEXT_NUMBER"},
+            {"title": "Final Margin pct", "type": "TEXT_NUMBER"},
+            {"title": "Status", "type": "PICKLIST", "options": ["Submitted", "Approved"]},
+            {"title": "Client Request ID", "type": "TEXT_NUMBER"},
+            {"title": "Created Date", "type": "TEXT_NUMBER"},
+            {"title": "Decision Date", "type": "TEXT_NUMBER"},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
+            {"title": "Card JSON", "type": "TEXT_NUMBER"},
         ]
     },
     "07 Delivery Log": {
@@ -252,12 +368,27 @@ SHEET_DEFINITIONS = {
             {"title": "Tag Sheet ID", "type": "TEXT_NUMBER"},
             {"title": "SAP Invoice Number", "type": "TEXT_NUMBER"},
             {"title": "Status", "type": "PICKLIST", "options": ["Pending SAP", "SAP Created", "Virtual", "POD Uploaded", "Invoiced", "Closed"]},
-            {"title": "Lines", "type": "TEXT_NUMBER"},  # JSON field
+            {"title": "Lines", "type": "TEXT_NUMBER"},
             {"title": "Quantity", "type": "TEXT_NUMBER"},
             {"title": "Value", "type": "TEXT_NUMBER"},
             {"title": "Vehicle ID", "type": "TEXT_NUMBER"},
-            {"title": "Created At", "type": "TEXT_NUMBER"},
-            {"title": "Remarks", "type": "TEXT_NUMBER"}
+            {"title": "Created At", "type": "DATE"},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
+        ]
+    },
+    "07h Delivery Log Ingestion": {
+        "folder": "04. Production and Delivery",
+        "columns": [
+            {"title": "SAP DO Number", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Tag Sheet ID", "type": "TEXT_NUMBER"},
+            {"title": "SAP Invoice Number", "type": "TEXT_NUMBER"},
+            {"title": "Status", "type": "PICKLIST", "options": ["Pending SAP", "SAP Created", "Virtual", "POD Uploaded", "Invoiced", "Closed"]},
+            {"title": "Lines", "type": "TEXT_NUMBER"},
+            {"title": "Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Value", "type": "TEXT_NUMBER"},
+            {"title": "Vehicle ID", "type": "TEXT_NUMBER"},
+            {"title": "Created At", "type": "DATE"},
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
         ]
     },
     "08 Invoice Log": {
@@ -272,14 +403,14 @@ SHEET_DEFINITIONS = {
             {"title": "SAP DO Number(s)", "type": "TEXT_NUMBER"},
             {"title": "Terms of Payment", "type": "TEXT_NUMBER"},
             {"title": "Payment Due Date", "type": "TEXT_NUMBER"},
-            {"title": "Remarks", "type": "TEXT_NUMBER"}
+            {"title": "Remarks", "type": "TEXT_NUMBER"},
         ]
     },
     "90 Inventory Txn Log": {
         "folder": "04. Production and Delivery",
         "columns": [
             {"title": "Txn ID", "type": "TEXT_NUMBER", "primary": True},
-            {"title": "Txn Date", "type": "DATETIME", "systemColumnType": "CREATED_DATE"},
+            {"title": "Txn Date", "type": "DATE"},
             {"title": "Txn Type", "type": "PICKLIST", "options": ["Receipt", "Allocation", "Issue", "Consumption", "Pick", "Adjustment", "DO Issue", "Remnant Create", "Remnant Return"]},
             {"title": "Material Code", "type": "TEXT_NUMBER"},
             {"title": "Quantity", "type": "TEXT_NUMBER"},
@@ -287,14 +418,14 @@ SHEET_DEFINITIONS = {
             {"title": "Source System", "type": "PICKLIST", "options": ["Smartsheet", "AzureFunc", "SAP", "Manual"]},
             {"title": "Created By", "type": "TEXT_NUMBER"},
             {"title": "Trace ID", "type": "TEXT_NUMBER"},
-            {"title": "Client Request ID", "type": "TEXT_NUMBER"}
+            {"title": "Client Request ID", "type": "TEXT_NUMBER"},
         ]
     },
     "91 Inventory Snapshot": {
         "folder": "04. Production and Delivery",
         "columns": [
             {"title": "Snapshot ID", "type": "TEXT_NUMBER", "primary": True},
-            {"title": "Snapshot Timestamp", "type": "DATETIME", "systemColumnType": "CREATED_DATE"},
+            {"title": "Snapshot Timestamp", "type": "DATE"},
             {"title": "Snapshot Type", "type": "TEXT_NUMBER"},
             {"title": "Plant", "type": "TEXT_NUMBER"},
             {"title": "Material Code", "type": "TEXT_NUMBER"},
@@ -305,39 +436,40 @@ SHEET_DEFINITIONS = {
             {"title": "Actual Consumption", "type": "TEXT_NUMBER"},
             {"title": "System Closing Quantity", "type": "TEXT_NUMBER"},
             {"title": "Physical Closing Quantity", "type": "TEXT_NUMBER"},
-            {"title": "Variance Quantity", "type": "TEXT_NUMBER"}
+            {"title": "Variance Quantity", "type": "TEXT_NUMBER"},
         ]
     },
     "92 SAP Inventory Snapshot": {
         "folder": "04. Production and Delivery",
         "columns": [
             {"title": "SAP Snapshot ID", "type": "TEXT_NUMBER", "primary": True},
-            {"title": "Snapshot Timestamp", "type": "DATETIME", "systemColumnType": "CREATED_DATE"},
+            {"title": "Snapshot Timestamp", "type": "DATE"},
             {"title": "Material Code", "type": "TEXT_NUMBER"},
             {"title": "UOM", "type": "TEXT_NUMBER"},
             {"title": "Unrestricted Quantity", "type": "TEXT_NUMBER"},
+            {"title": "Unrestricted Value", "type": "TEXT_NUMBER"},
+            {"title": "WIP Quantity", "type": "TEXT_NUMBER"},
             {"title": "In Transit Quantity", "type": "TEXT_NUMBER"},
-            {"title": "WIP Quantity", "type": "TEXT_NUMBER"}
         ]
     },
     "93 Physical Inventory Snapshot": {
         "folder": "04. Production and Delivery",
         "columns": [
             {"title": "Physical Snapshot ID", "type": "TEXT_NUMBER", "primary": True},
-            {"title": "Snapshot Timestamp", "type": "DATETIME", "systemColumnType": "CREATED_DATE"},
+            {"title": "Snapshot Timestamp", "type": "DATE"},
             {"title": "Plant", "type": "TEXT_NUMBER"},
             {"title": "Material Code", "type": "TEXT_NUMBER"},
             {"title": "UOM", "type": "TEXT_NUMBER"},
             {"title": "Physical Quantity", "type": "TEXT_NUMBER"},
             {"title": "Counted By", "type": "TEXT_NUMBER"},
-            {"title": "Variance Posted", "type": "PICKLIST", "options": ["Yes", "No"]}
+            {"title": "Variance Posted", "type": "PICKLIST", "options": ["Yes", "No"]},
         ]
     },
     "97 Override Log": {
         "folder": "04. Production and Delivery",
         "columns": [
             {"title": "Override ID", "type": "TEXT_NUMBER", "primary": True},
-            {"title": "Timestamp", "type": "DATETIME", "systemColumnType": "CREATED_DATE"},
+            {"title": "Timestamp", "type": "DATE"},
             {"title": "Requested By", "type": "TEXT_NUMBER"},
             {"title": "Reason", "type": "TEXT_NUMBER"},
             {"title": "Related Entity", "type": "TEXT_NUMBER"},
@@ -345,47 +477,46 @@ SHEET_DEFINITIONS = {
             {"title": "Requested Action", "type": "TEXT_NUMBER"},
             {"title": "Approval", "type": "TEXT_NUMBER"},
             {"title": "Decision", "type": "TEXT_NUMBER"},
-            {"title": "Decision Timestamp", "type": "DATE"}
+            {"title": "Decision Timestamp", "type": "DATE"},
         ]
     },
     "98 User Action Log": {
         "folder": "04. Production and Delivery",
         "columns": [
             {"title": "Action ID", "type": "TEXT_NUMBER", "primary": True},
-            {"title": "Timestamp", "type": "DATETIME", "systemColumnType": "CREATED_DATE"},
+            {"title": "Timestamp", "type": "TEXT_NUMBER"},
             {"title": "User ID", "type": "TEXT_NUMBER"},
             {"title": "Action Type", "type": "TEXT_NUMBER"},
             {"title": "Target Table", "type": "TEXT_NUMBER"},
             {"title": "Target ID", "type": "TEXT_NUMBER"},
             {"title": "Old Value", "type": "TEXT_NUMBER"},
             {"title": "New Value", "type": "TEXT_NUMBER"},
-            {"title": "Notes", "type": "TEXT_NUMBER"}
+            {"title": "Notes", "type": "TEXT_NUMBER"},
         ]
     },
     "99 Exception Log": {
         "folder": "04. Production and Delivery",
         "columns": [
             {"title": "Exception ID", "type": "TEXT_NUMBER", "primary": True},
-            {"title": "Client Request ID", "type": "TEXT_NUMBER"},  # For deduplication (v1.6.5)
-            {"title": "Created At", "type": "DATETIME", "systemColumnType": "CREATED_DATE"},
-            {"title": "Source", "type": "PICKLIST", "options": ["Parser", "Allocation", "Reconcile", "Manual", "SAP Sync", "Ingest"]},
+            {"title": "Created At", "type": "TEXT_NUMBER"},
+            {"title": "Source", "type": "PICKLIST", "options": ["Parser", "Allocation", "Reconcile", "Manual", "SAP Sync", "Ingest", "Plan"]},
             {"title": "Related Tag ID", "type": "TEXT_NUMBER"},
             {"title": "Related Txn ID", "type": "TEXT_NUMBER"},
             {"title": "Material Code", "type": "TEXT_NUMBER"},
             {"title": "Quantity", "type": "TEXT_NUMBER"},
-            {"title": "Reason Code", "type": "PICKLIST", "options": ["DUPLICATE_UPLOAD", "MULTI_TAG_NEST", "SHORTAGE", "OVERCONSUMPTION", "PHYSICAL_VARIANCE", "SAP_CREATE_FAILED", "PICK_NEGATIVE", "LPO_NOT_FOUND", "LPO_ON_HOLD", "INSUFFICIENT_PO_BALANCE", "PARSE_FAILED", "LPO_INVALID_DATA"]},
+            {"title": "Reason Code", "type": "TEXT_NUMBER"},
             {"title": "Severity", "type": "PICKLIST", "options": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
             {"title": "Assigned To", "type": "TEXT_NUMBER"},
             {"title": "Status", "type": "PICKLIST", "options": ["Open", "Acknowledged", "In Progress", "Resolved", "Rejected"]},
             {"title": "Approvals", "type": "TEXT_NUMBER"},
             {"title": "SLA Due", "type": "DATE"},
             {"title": "Attachment Links", "type": "TEXT_NUMBER"},
-            {"title": "Resolution Action", "type": "TEXT_NUMBER"}
+            {"title": "Resolution Action", "type": "TEXT_NUMBER"},
+            {"title": "Client Request ID", "type": "TEXT_NUMBER"},
         ]
     },
-    
-    # 05. Material Mapping (Canonical Material Mapping Specification)
-    # All columns TEXT_NUMBER to avoid type mismatch - data consistency maintained by scripts
+
+    # ==================== 05. Material Mapping ====================
     "05a Material Master": {
         "folder": "05. Material Mapping",
         "columns": [
@@ -393,6 +524,7 @@ SHEET_DEFINITIONS = {
             {"title": "Nesting Description", "type": "TEXT_NUMBER", "primary": True},
             {"title": "Canonical Code", "type": "TEXT_NUMBER"},
             {"title": "Default SAP Code", "type": "TEXT_NUMBER"},
+            {"title": "SAP Description", "type": "TEXT_NUMBER"},
             {"title": "UOM", "type": "TEXT_NUMBER"},
             {"title": "SAP UOM", "type": "TEXT_NUMBER"},
             {"title": "Conversion Factor", "type": "TEXT_NUMBER"},
@@ -400,7 +532,7 @@ SHEET_DEFINITIONS = {
             {"title": "Active", "type": "TEXT_NUMBER"},
             {"title": "Notes", "type": "TEXT_NUMBER"},
             {"title": "Updated At", "type": "TEXT_NUMBER"},
-            {"title": "Updated By", "type": "TEXT_NUMBER"}
+            {"title": "Updated By", "type": "TEXT_NUMBER"},
         ]
     },
     "05b Mapping Override": {
@@ -416,19 +548,24 @@ SHEET_DEFINITIONS = {
             {"title": "Effective From", "type": "TEXT_NUMBER"},
             {"title": "Effective To", "type": "TEXT_NUMBER"},
             {"title": "Created By", "type": "TEXT_NUMBER"},
-            {"title": "Created At", "type": "TEXT_NUMBER"}
+            {"title": "Created At", "type": "TEXT_NUMBER"},
         ]
     },
-    "05c LPO Material Brand Map": {
+    "05c SAP Material Catalog": {
         "folder": "05. Material Mapping",
         "columns": [
             {"title": "Map ID", "type": "TEXT_NUMBER"},
-            {"title": "LPO ID", "type": "TEXT_NUMBER", "primary": True},
+            {"title": "Nesting Description", "type": "TEXT_NUMBER", "primary": True},
             {"title": "Canonical Code", "type": "TEXT_NUMBER"},
             {"title": "SAP Code", "type": "TEXT_NUMBER"},
-            {"title": "Priority", "type": "TEXT_NUMBER"},
             {"title": "Active", "type": "TEXT_NUMBER"},
-            {"title": "Notes", "type": "TEXT_NUMBER"}
+            {"title": "Notes", "type": "TEXT_NUMBER"},
+            {"title": "UOM", "type": "TEXT_NUMBER"},
+            {"title": "SAP UOM", "type": "TEXT_NUMBER"},
+            {"title": "Conversion Factor", "type": "TEXT_NUMBER"},
+            {"title": "Not Tracked", "type": "TEXT_NUMBER"},
+            {"title": "Updated At", "type": "TEXT_NUMBER"},
+            {"title": "Updated By", "type": "TEXT_NUMBER"},
         ]
     },
     "05d Mapping History": {
@@ -443,7 +580,7 @@ SHEET_DEFINITIONS = {
             {"title": "User ID", "type": "TEXT_NUMBER"},
             {"title": "Trace ID", "type": "TEXT_NUMBER"},
             {"title": "Created At", "type": "TEXT_NUMBER"},
-            {"title": "Notes", "type": "TEXT_NUMBER"}
+            {"title": "Notes", "type": "TEXT_NUMBER"},
         ]
     },
     "05e Mapping Exception": {
@@ -456,7 +593,7 @@ SHEET_DEFINITIONS = {
             {"title": "Assigned To", "type": "TEXT_NUMBER"},
             {"title": "Created At", "type": "TEXT_NUMBER"},
             {"title": "Trace ID", "type": "TEXT_NUMBER"},
-            {"title": "Resolution Notes", "type": "TEXT_NUMBER"}
+            {"title": "Resolution Notes", "type": "TEXT_NUMBER"},
         ]
     },
     "06a Parsed BOM": {
@@ -476,9 +613,9 @@ SHEET_DEFINITIONS = {
             {"title": "Mapping Decision", "type": "TEXT_NUMBER"},
             {"title": "History ID", "type": "TEXT_NUMBER"},
             {"title": "Created At", "type": "TEXT_NUMBER"},
-            {"title": "Trace ID", "type": "TEXT_NUMBER"}
+            {"title": "Trace ID", "type": "TEXT_NUMBER"},
         ]
-    }
+    },
 }
 
 
@@ -555,19 +692,19 @@ def main():
     print("Smartsheet Workspace Creator")
     print(f"Timestamp: {datetime.now().isoformat()}")
     print("=" * 60)
-    
+
     # Get workspace name from user
     workspace_name = input("\nEnter new workspace name (e.g., 'Ducts Production'): ").strip()
     if not workspace_name:
         workspace_name = f"Ducts Workspace {datetime.now().strftime('%Y%m%d_%H%M')}"
-    
+
     print(f"\nCreating workspace: {workspace_name}")
     print("-" * 40)
-    
+
     # Step 1: Create workspace
     workspace_id = create_workspace(workspace_name)
     time.sleep(0.5)  # Rate limiting
-    
+
     # Step 2: Create folders
     print("\n[1/3] Creating folder structure...")
     folder_ids = {}
@@ -575,15 +712,15 @@ def main():
         folder_id = create_folder(workspace_id, folder_name)
         folder_ids[folder_name] = folder_id
         time.sleep(0.3)
-    
+
     # Step 3: Create sheets
     print("\n[2/3] Creating sheets...")
     created_sheets = []
-    
+
     for sheet_name, definition in SHEET_DEFINITIONS.items():
         folder = definition.get("folder")
         columns = prepare_columns(definition["columns"])
-        
+
         try:
             if folder is None:
                 # Root level sheet
@@ -592,13 +729,13 @@ def main():
                 # Sheet in folder
                 folder_id = folder_ids[folder]
                 sheet_id = create_sheet_in_folder(folder_id, sheet_name, columns)
-            
+
             created_sheets.append({"name": sheet_name, "id": sheet_id, "folder": folder})
             time.sleep(0.3)  # Rate limiting
-            
+
         except Exception as e:
             print(f"    ❌ Error creating {sheet_name}: {e}")
-    
+
     # Save results
     print("\n[3/3] Saving workspace info...")
     result = {
@@ -608,13 +745,13 @@ def main():
         "folders": folder_ids,
         "sheets": created_sheets
     }
-    
+
     output_file = f"workspace_created_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
-    
+
     print(f"\n✓ Workspace info saved to: {output_file}")
-    
+
     # Summary
     print("\n" + "=" * 60)
     print("SUMMARY")
