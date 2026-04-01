@@ -141,11 +141,11 @@ class TestLPOIngestRequest:
             )
     
     def test_wastage_pct_bounds(self):
-        """Test wastage_pct must be between 0 and 20."""
+        """Test wastage_pct must be >= 0 with no upper limit."""
         from shared.models import LPOIngestRequest
         from pydantic import ValidationError
-        
-        # Valid at 20%
+
+        # Valid at high values (no upper limit)
         request = LPOIngestRequest(
             sap_reference="PTE-185",
             customer_name="Test",
@@ -153,12 +153,12 @@ class TestLPOIngestRequest:
             brand="KIMMCO",
             po_quantity_sqm=100.0,
             price_per_sqm=150.0,
-            wastage_pct=20.0,  # Max allowed
+            wastage_pct=50.0,
             uploaded_by="user@company.com"
         )
-        assert request.wastage_pct == 20.0
-        
-        # Invalid at 25%
+        assert request.wastage_pct == 50.0
+
+        # Invalid: negative
         with pytest.raises(ValidationError):
             LPOIngestRequest(
                 sap_reference="PTE-185",
@@ -167,7 +167,7 @@ class TestLPOIngestRequest:
                 brand="KIMMCO",
                 po_quantity_sqm=100.0,
                 price_per_sqm=150.0,
-                wastage_pct=25.0,  # Exceeds max!
+                wastage_pct=-5.0,
                 uploaded_by="user@company.com"
             )
     

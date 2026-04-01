@@ -34,9 +34,10 @@ def _make_request(body):
 
 
 def _make_invalid_json_request():
-    """Build a mock request that raises ValueError on get_json."""
+    """Build a mock request with invalid JSON body."""
     req = MagicMock()
     req.get_json.side_effect = ValueError("Invalid JSON")
+    req.get_body.return_value = b"NOT-JSON{{"
     return req
 
 

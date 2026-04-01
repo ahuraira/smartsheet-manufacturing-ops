@@ -305,6 +305,7 @@ class TestResolveSAPConflict:
 
         req = MagicMock()
         req.get_json.side_effect = ValueError("bad json")
+        req.get_body.return_value = b"NOT-JSON{{"
 
         result = main(req)
         assert result.status_code == 400
