@@ -53,9 +53,9 @@ class FlowType(str, Enum):
     """Supported Power Automate flow types."""
     CREATE_LPO_FOLDERS = "create_lpo_folders"
     CREATE_TAG_FOLDERS = "create_tag_folders"  # Future use
-    SEND_NOTIFICATION = "send_notification"     # Future use
     NESTING_COMPLETE = "nesting_complete"       # v1.6.7: Nesting completion flow
     UPLOAD_FILES = "upload_files"               # v1.6.9: Generic directory file upload
+    SEND_NOTIFICATION = "send_notification"     # v1.8.0: Email notifications via flow
 
 
 @dataclass
@@ -91,6 +91,7 @@ class FlowClientConfig:
     create_folders_url: Optional[str] = None
     nesting_complete_url: Optional[str] = None  # v1.6.7
     upload_files_url: Optional[str] = None      # v1.6.9: Generic upload flow URL
+    notification_url: Optional[str] = None     # v1.8.0: Email notification flow URL
     
     # LPO subfolder structure (configurable via LPO_SUBFOLDERS env var)
     lpo_subfolders: list = field(default_factory=lambda: DEFAULT_LPO_SUBFOLDERS.copy())
@@ -126,6 +127,7 @@ class FlowClientConfig:
             create_folders_url=os.environ.get("POWER_AUTOMATE_CREATE_FOLDERS_URL"),
             nesting_complete_url=os.environ.get("POWER_AUTOMATE_NESTING_COMPLETE_URL"),  # v1.6.7
             upload_files_url=os.environ.get("POWER_AUTOMATE_UPLOAD_FILES_URL"),          # v1.6.9
+            notification_url=os.environ.get("POWER_AUTOMATE_NOTIFICATION_URL"),          # v1.8.0
             lpo_subfolders=subfolders,
             max_retries=int(os.environ.get("FLOW_MAX_RETRIES", "3")),
             connect_timeout=float(os.environ.get("FLOW_CONNECT_TIMEOUT", "5.0")),
@@ -479,6 +481,60 @@ def trigger_nesting_complete_flow(
         url=url,
         payload=payload,
         correlation_id=correlation_id
+    )
+
+
+def send_notification(
+    to: list,
+    subject: str,
+    body: str,
+    cc: Optional[list] = None,
+    importance: str = "normal",
+    trace_id: str = "",
+) -> FlowTriggerResult:
+    """
+    Send an email notification via Power Automate.
+
+    Args:
+        to: List of recipient email addresses
+        subject: Email subject line
+        body: Email body (HTML supported)
+        cc: Optional list of CC recipients
+        importance: "normal" or "high"
+        trace_id: Trace ID for correlation/dedup
+
+    Returns:
+        FlowTriggerResult with trigger status
+    """
+    client = get_flow_client()
+
+    url = client.config.notification_url
+    if not url:
+        logger.warning(
+            f"[{trace_id}] POWER_AUTOMATE_NOTIFICATION_URL not configured - skipping notification"
+        )
+        return FlowTriggerResult(
+            success=False,
+            flow_type=FlowType.SEND_NOTIFICATION,
+            correlation_id=trace_id,
+            error_message="Flow URL not configured",
+        )
+
+    payload = {
+        "to": ";".join(to),
+        "subject": subject,
+        "body": body,
+        "importance": importance,
+        "trace_id": trace_id,
+    }
+    if cc:
+        payload["cc"] = ";".join(cc)
+
+    return client._trigger_flow(
+        flow_type=FlowType.SEND_NOTIFICATION,
+        url=url,
+        payload=payload,
+        correlation_id=trace_id,
     )
 
 

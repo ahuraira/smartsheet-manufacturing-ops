@@ -92,7 +92,8 @@ def _make_request(shift=None, max_results=None):
 FIXED_NOW = datetime(2026, 3, 24, 10, 0, 0)
 TODAY_ISO = "2026-03-24"
 YESTERDAY_ISO = "2026-03-23"
-OLD_DATE_ISO = "2026-03-20"
+WITHIN_5_DAYS_ISO = "2026-03-20"  # 4 days ago — within window
+OLD_DATE_ISO = "2026-03-18"       # 6 days ago — outside window
 
 
 # ---------------------------------------------------------------------------
@@ -304,11 +305,12 @@ class TestFnPendingItems:
 
     # ---- Date filter ------------------------------------------------------
 
-    def test_returns_today_and_yesterday_rows(self):
-        """Rows planned for today or yesterday are included."""
+    def test_returns_rows_within_5_day_window(self):
+        """Rows planned for today, yesterday, and within 5 days are included."""
         rows = [
             _make_row(100, "Submitted", "ALLOC-TODAY", "TAG-001", TODAY_ISO, 10.0, "Morning"),
             _make_row(101, "Submitted", "ALLOC-YEST", "TAG-002", YESTERDAY_ISO, 20.0, "Morning"),
+            _make_row(102, "Submitted", "ALLOC-4DAYS", "TAG-003", WITHIN_5_DAYS_ISO, 30.0, "Morning"),
         ]
         client = MagicMock()
         client.get_sheet.return_value = _build_sheet_data(rows)
@@ -322,10 +324,10 @@ class TestFnPendingItems:
 
         body = json.loads(resp.get_body())
         ids = {t["allocation_id"] for t in body["pending_tags"]}
-        assert ids == {"ALLOC-TODAY", "ALLOC-YEST"}
+        assert ids == {"ALLOC-TODAY", "ALLOC-YEST", "ALLOC-4DAYS"}
 
-    def test_excludes_old_dates(self):
-        """Rows with a planned date older than yesterday are excluded."""
+    def test_excludes_dates_older_than_5_days(self):
+        """Rows with a planned date older than 5 days are excluded."""
         rows = [
             _make_row(100, "Submitted", "ALLOC-OLD", "TAG-001", OLD_DATE_ISO, 10.0, "Morning"),
             _make_row(101, "Submitted", "ALLOC-TODAY", "TAG-002", TODAY_ISO, 20.0, "Morning"),

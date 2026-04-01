@@ -85,7 +85,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # 5. Filter rows (use UAE timezone for correct date)
         today     = now_uae().date()
-        yesterday = today - timedelta(days=1)
+        cutoff    = today - timedelta(days=5)
 
         pending_tags: List[AllocationSummary] = []
 
@@ -105,12 +105,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             if shift and row.get(col_shift) != shift:
                 continue
 
-            # --- Filter by date: today or yesterday ---
+            # --- Filter by date: within last 5 days ---
             planned_date_str = row.get(col_planned_date, "")
             if planned_date_str:
                 try:
                     planned_date = datetime.fromisoformat(str(planned_date_str)).date()
-                    if planned_date not in (today, yesterday):
+                    if planned_date < cutoff or planned_date > today:
                         continue
                 except (ValueError, TypeError):
                     continue  # Skip rows with unparseable dates

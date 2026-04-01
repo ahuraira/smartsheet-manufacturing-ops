@@ -93,11 +93,14 @@ from shared import (
     # Audit (shared - DRY)
     create_exception,
     log_user_action,
-    
+
     # LPO Service (v1.6.6 DRY)
     find_lpo_by_sap_reference,
     get_lpo_quantities,
     get_lpo_status,
+
+    # Notifications
+    send_notification,
 )
 
 logger = logging.getLogger(__name__)
@@ -444,6 +447,44 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             trace_id=trace_id
         )
         
+        # 12. Notify production team with nesting upload link
+        try:
+            from urllib.parse import quote
+            lpo_customer = lpo.get(_get_physical_column_name("LPO_MASTER", "CUSTOMER_NAME"), "")
+            lpo_folder_url = lpo.get(_get_physical_column_name("LPO_MASTER", "LPO_FOLDER_URL"), "")
+            if not lpo_folder_url and lpo_ref:
+                from shared.helpers import generate_lpo_folder_url
+                lpo_folder_url = generate_lpo_folder_url(lpo_ref, lpo_customer)
+
+            cut_session_url = f"{lpo_folder_url}/{quote('Cut Sessions')}" if lpo_folder_url else ""
+
+            production_team = os.environ.get(
+                "PRODUCTION_TEAM_EMAILS",
+                "aslam.ca@tte.ae;manu.nair@tte.ae;sheri.wilson@tte.ae;sumit.kavade@tte.ae",
+            ).split(";")
+
+            send_notification(
+                to=production_team,
+                subject=f"Nesting Required: {request.tag_id} scheduled for {request.planned_date}",
+                body=(
+                    f"<p>Tag sheet <b>{request.tag_id}</b> has been scheduled for production.</p>"
+                    f"<table style='border-collapse:collapse;margin:10px 0'>"
+                    f"<tr><td style='padding:4px 12px 4px 0;font-weight:bold'>Planned Date</td><td>{request.planned_date}</td></tr>"
+                    f"<tr><td style='padding:4px 12px 4px 0;font-weight:bold'>Shift</td><td>{request.shift}</td></tr>"
+                    f"<tr><td style='padding:4px 12px 4px 0;font-weight:bold'>Machine</td><td>{request.machine_id}</td></tr>"
+                    f"<tr><td style='padding:4px 12px 4px 0;font-weight:bold'>Quantity</td><td>{schedule_qty} m&sup2;</td></tr>"
+                    f"<tr><td style='padding:4px 12px 4px 0;font-weight:bold'>LPO</td><td>{lpo_ref}</td></tr>"
+                    f"<tr><td style='padding:4px 12px 4px 0;font-weight:bold'>Nesting Deadline</td><td>{next_action_deadline or 'N/A'}</td></tr>"
+                    f"</table>"
+                    f"<p>Please upload the nesting file to the Cut Sessions folder:</p>"
+                    f"<p><a href='{cut_session_url}'>Open Cut Sessions Folder</a></p>"
+                ),
+                importance="high",
+                trace_id=trace_id,
+            )
+        except Exception as notify_err:
+            logger.warning(f"[{trace_id}] Failed to send schedule notification: {notify_err}")
+
         return func.HttpResponse(
             json.dumps({
                 "status": "RELEASED_FOR_NESTING",

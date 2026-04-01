@@ -226,6 +226,7 @@ from .power_automate import (
     trigger_create_lpo_folders,
     trigger_nesting_complete_flow,  # v1.6.7
     trigger_upload_files_flow,      # v1.6.9
+    send_notification,              # v1.8.0
 )
 
 # Atomic update helpers (v1.6.9 - SOTA fix for race conditions)
@@ -383,6 +384,7 @@ __all__ = [
     "trigger_create_lpo_folders",
     "trigger_nesting_complete_flow", # v1.6.7
     "trigger_upload_files_flow",     # v1.6.9
+    "send_notification",             # v1.8.0
     # Event utils (v1.4.0+)
     "get_cell_value_by_column_id",
     "get_cell_value_by_logical_name",
