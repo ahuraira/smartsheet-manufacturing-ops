@@ -401,7 +401,7 @@ class LPOIngestRequest(BaseModel):
     # Optional fields
     customer_lpo_ref: Optional[str] = None
     terms_of_payment: str = "30 Days Credit"
-    wastage_pct: float = Field(default=0.0, ge=0, le=20)  # 0-20%
+    wastage_pct: float = Field(default=0.0, ge=0)  # No upper limit
     planned_gm_pct: Optional[float] = None  # Planned gross margin %
     hold_reason: Optional[str] = None
     remarks: Optional[str] = None
@@ -470,7 +470,7 @@ class LPOUpdateRequest(BaseModel):
     po_quantity_sqm: Optional[float] = Field(default=None, gt=0)
     price_per_sqm: Optional[float] = Field(default=None, gt=0)
     terms_of_payment: Optional[str] = None
-    wastage_pct: Optional[float] = Field(default=None, ge=0, le=20)
+    wastage_pct: Optional[float] = Field(default=None, ge=0)
     hold_reason: Optional[str] = None
     lpo_status: Optional[str] = None  # Draft, Active, On Hold, etc.
     remarks: Optional[str] = None

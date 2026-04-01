@@ -20,7 +20,7 @@ from shared.manifest import get_manifest
 from shared.logical_names import Sheet, Column
 from shared.audit import log_user_action, create_exception
 from shared.models import ActionType, ReasonCode, ExceptionSeverity, ExceptionSource
-from shared.helpers import format_datetime_for_smartsheet, now_uae, resolve_user_email
+from shared.helpers import format_datetime_for_smartsheet, now_uae, resolve_user_email, parse_request_json
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +30,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     client = None
 
     try:
-        try:
-            req_body = req.get_json()
-        except ValueError:
+        req_body, parse_err = parse_request_json(req)
+        if parse_err:
             return func.HttpResponse(
-                json.dumps({"error": "Invalid JSON", "trace_id": trace_id}),
+                json.dumps({"error": parse_err, "trace_id": trace_id}),
                 status_code=400, mimetype="application/json"
             )
 

@@ -46,7 +46,7 @@ from shared.allocation_service import _parse_rows
 from shared.queue_lock import AllocationLock
 from shared.audit import log_user_action, create_exception
 from shared.models import ActionType, ExceptionSeverity, ExceptionSource, ReasonCode
-from shared.helpers import resolve_user_email
+from shared.helpers import resolve_user_email, parse_request_json
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +57,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     
     try:
         # 1. Parse and validate request
-        try:
-            body = req.get_json()
-        except ValueError:
+        body, parse_err = parse_request_json(req)
+        if parse_err:
             return func.HttpResponse(
                 json.dumps({
-                    "error": {"code": "INVALID_PAYLOAD", "message": "Invalid JSON"},
+                    "error": {"code": "INVALID_PAYLOAD", "message": parse_err},
                     "trace_id": trace_id
                 }),
                 status_code=400,

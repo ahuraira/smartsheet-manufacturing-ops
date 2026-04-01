@@ -7,10 +7,11 @@ which uses sequence-based IDs stored in the Config sheet.
 """
 
 import hashlib
+import json
 import uuid
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, Tuple
 from zoneinfo import ZoneInfo
 import requests
 
@@ -491,3 +492,29 @@ def extract_row_attachments_as_files(
             logger.warning(f"Failed to fetch attachments for row {row_id}: {att_err}")
     
     return files
+
+
+def parse_request_json(req) -> Tuple[Optional[Dict], Optional[str]]:
+    """Parse JSON from Azure Functions HttpRequest with fallback for missing Content-Type.
+
+    Power Automate sometimes omits the Content-Type header, causing req.get_json()
+    to raise ValueError even when the body is valid JSON.
+
+    Returns:
+        (parsed_dict, None) on success
+        (None, error_message) on failure
+    """
+    try:
+        return req.get_json(), None
+    except (ValueError, Exception):
+        pass
+
+    # Fallback: parse raw body directly
+    try:
+        raw = req.get_body()
+        if not raw:
+            return None, "Empty request body"
+        return json.loads(raw), None
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error(f"Failed to parse request body: {e}")
+        return None, "Invalid JSON"

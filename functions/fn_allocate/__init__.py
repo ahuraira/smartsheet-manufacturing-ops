@@ -26,8 +26,11 @@ import json
 import logging
 import traceback
 import uuid
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import azure.functions as func
+from shared.helpers import parse_request_json
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +42,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     logger.info(f"[{trace_id}] fn_allocate invoked")
 
     # ── 1. Parse request body ───────────────────────────────────────
-    try:
-        body = req.get_json()
-    except ValueError:
+    body, parse_err = parse_request_json(req)
+    if parse_err:
         return func.HttpResponse(
-            json.dumps({"error": "Invalid JSON body", "trace_id": trace_id}),
+            json.dumps({"error": parse_err, "trace_id": trace_id}),
             status_code=400,
             mimetype="application/json",
         )

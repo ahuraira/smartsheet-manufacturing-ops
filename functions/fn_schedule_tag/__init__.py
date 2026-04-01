@@ -104,6 +104,7 @@ logger = logging.getLogger(__name__)
 
 # DRY (v1.6.5): Use shared helper instead of local duplicate
 from shared import get_physical_column_name
+from shared.helpers import parse_request_json
 _get_physical_column_name = get_physical_column_name  # Alias for backward compat
 
 # DEPRECATED: _manifest is no longer used (we use get_physical_column_name from shared)
@@ -132,8 +133,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     
     try:
         # 1. Parse request
+        body, parse_err = parse_request_json(req)
+        if parse_err:
+            return func.HttpResponse(
+                json.dumps({"status": "ERROR", "message": parse_err, "trace_id": trace_id}),
+                status_code=400, mimetype="application/json"
+            )
         try:
-            body = req.get_json()
             request = ScheduleTagRequest(**body)
         except Exception as e:
             logger.error(f"[{trace_id}] Invalid request: {e}")

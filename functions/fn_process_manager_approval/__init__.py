@@ -10,7 +10,7 @@ from shared.logical_names import Sheet, Column
 from shared.blob_storage import get_blob_service_client, get_container_name, upload_json_blob
 from shared.audit import log_user_action, create_exception
 from shared.models import ActionType, ExceptionSeverity, ExceptionSource, ReasonCode
-from shared.helpers import now_uae, format_datetime_for_smartsheet, parse_float_safe, resolve_user_email, normalize_ref_value
+from shared.helpers import now_uae, format_datetime_for_smartsheet, parse_float_safe, resolve_user_email, normalize_ref_value, parse_request_json
 from shared.queue_lock import AllocationLock
 
 logger = logging.getLogger(__name__)
@@ -21,9 +21,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     client = None
 
-    try:
-        req_body = req.get_json()
-    except ValueError:
+    req_body, parse_err = parse_request_json(req)
+    if parse_err:
         try:
             create_exception(
                 client=SmartsheetClient(),
@@ -31,11 +30,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 reason_code=ReasonCode.SYSTEM_ERROR,
                 severity=ExceptionSeverity.MEDIUM,
                 source=ExceptionSource.INGEST,
-                message="fn_process_manager_approval: Invalid JSON payload",
+                message=f"fn_process_manager_approval: {parse_err}",
             )
         except Exception:
             logger.error(f"[{trace_id}] Failed to create exception record")
-        return func.HttpResponse("Invalid JSON", status_code=400)
+        return func.HttpResponse(parse_err, status_code=400)
 
     raw_action = req_body.get("action", "")
     approval_row_id = req_body.get("approval_row_id")

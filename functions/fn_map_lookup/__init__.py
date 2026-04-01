@@ -49,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.smartsheet_client import SmartsheetClient
 from shared.audit import create_exception
+from shared.helpers import parse_request_json
 from .mapping_service import MappingService, MappingResult
 
 logger = logging.getLogger(__name__)
@@ -66,11 +67,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     
     try:
         # Parse request body
-        try:
-            body = req.get_json()
-        except ValueError as e:
+        body, parse_err = parse_request_json(req)
+        if parse_err:
             return _error_response(
-                "Invalid JSON in request body",
+                parse_err,
                 trace_id,
                 status_code=400
             )

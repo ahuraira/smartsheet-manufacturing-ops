@@ -186,6 +186,8 @@ from .helpers import (
     # UAE timezone helpers
     UAE_TZ,
     now_uae,
+    # Request parsing (robust JSON fallback for Power Automate)
+    parse_request_json,
 )
 
 # Audit utilities (DRY - shared across functions)

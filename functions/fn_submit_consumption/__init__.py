@@ -53,6 +53,7 @@ from shared import (
     ConsumptionSubmission,
 )
 from shared.consumption_service import submit_consumption
+from shared.helpers import parse_request_json
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +64,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     
     try:
         # 1. Parse and validate request
-        try:
-            body = req.get_json()
-        except ValueError:
+        body, parse_err = parse_request_json(req)
+        if parse_err:
             return func.HttpResponse(
                 json.dumps({
-                    "error": {"code": "INVALID_PAYLOAD", "message": "Invalid JSON"},
+                    "error": {"code": "INVALID_PAYLOAD", "message": parse_err},
                     "trace_id": trace_id
                 }),
                 status_code=400,
