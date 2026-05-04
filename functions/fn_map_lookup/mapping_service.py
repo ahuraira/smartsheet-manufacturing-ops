@@ -118,8 +118,9 @@ class MappingService:
         self._catalog_cache: Dict[str, CatalogEntry] = {}
         self._catalog_cache_timestamp: Optional[datetime] = None
         
-        # 05b Override cache
-        self._override_cache: List[Dict] = []
+        # 05b Override cache: (scope_type, scope_value, nesting_desc) → {canonical_code, sap_code}
+        # All keys are normalized at index-build time (lowercase desc, .0-stripped scope_value)
+        self._override_index: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
         self._override_cache_timestamp: Optional[datetime] = None
         
         self._cache_lock = threading.Lock()
@@ -493,7 +494,7 @@ class MappingService:
         return manifest.get_all_column_ids("05C_SAP_MATERIAL_CATALOG")
     
     # ── Override (05b) cache ────────────────────────────────────────────
-    
+
     def _check_overrides(
         self,
         normalized_description: str,
@@ -503,114 +504,99 @@ class MappingService:
         customer_id: Optional[str],
     ) -> Optional[Dict[str, str]]:
         """
-        Check override table with scope precedence.
-        
-        Precedence: LPO > BRAND > PROJECT > CUSTOMER
+        Look up an override by scope precedence: LPO > BRAND > PROJECT > CUSTOMER.
+
+        Lookup is a single indexed dict access per scope. Index keys are
+        normalized at build time so '2551040.0' (Smartsheet TEXT_NUMBER float)
+        and '2551040' (string) match identically.
         """
-        from shared.logical_names import Sheet
-        
-        # Build scope checks in precedence order
-        scope_checks = []
-        if lpo_id:
-            scope_checks.append(("LPO", lpo_id))
-        if brand:
-            scope_checks.append(("BRAND", brand))
-        if project_id:
-            scope_checks.append(("PROJECT", project_id))
-        if customer_id:
-            scope_checks.append(("CUSTOMER", customer_id))
-        
-        if not scope_checks:
+        from shared.helpers import normalize_ref_value
+
+        index = self._get_override_index()
+        if not index:
             return None
-        
-        try:
-            # Use cached override data to prevent N+1 API calls
-            rows = self._get_override_cache()
-            col_ids = self._get_override_column_ids()
-            
-            for scope_type, scope_value in scope_checks:
-                for row in rows:
-                    cells = {c.get("columnId"): c.get("value") for c in row.get("cells", [])}
-                    
-                    # Check scope match
-                    row_scope_type = str(cells.get(col_ids["SCOPE_TYPE"], "")).upper()
-                    row_scope_value = str(cells.get(col_ids["SCOPE_VALUE"], ""))
-                    row_nesting_desc = self._normalize_description(
-                        str(cells.get(col_ids["NESTING_DESCRIPTION"], ""))
-                    )
-                    
-                    # Check if active
-                    active_val = str(cells.get(col_ids.get("ACTIVE"), "Yes")).lower()
-                    if active_val in ["no", "false", "0"]:
-                        continue
-                    
-                    # Check effective dates (use UTC to match cache timestamps)
-                    from shared.helpers import now_uae
-                    now_date = now_uae().date()
-                    
-                    eff_from_str = str(cells.get(col_ids.get("EFFECTIVE_FROM"), "")).split("T")[0]
-                    eff_to_str = str(cells.get(col_ids.get("EFFECTIVE_TO"), "")).split("T")[0]
-                    
-                    if eff_from_str:
-                        try:
-                            eff_from = datetime.strptime(eff_from_str, "%Y-%m-%d").date()
-                            if now_date < eff_from:
-                                continue
-                        except ValueError:
-                            pass  # Ignore invalid dates
-                            
-                    if eff_to_str:
-                        try:
-                            eff_to = datetime.strptime(eff_to_str, "%Y-%m-%d").date()
-                            if now_date > eff_to:
-                                continue
-                        except ValueError:
-                            pass
-                    
-                    if (
-                        row_scope_type == scope_type
-                        and row_scope_value == scope_value
-                        and row_nesting_desc == normalized_description
-                    ):
-                        return {
-                            "canonical_code": cells.get(col_ids["CANONICAL_CODE"]),
-                            "sap_code": cells.get(col_ids["SAP_CODE"]),
-                        }
-            
-        except Exception as e:
-            logger.warning(f"Error checking overrides: {e}")
-        
+
+        scope_checks = (
+            ("LPO", lpo_id),
+            ("BRAND", brand),
+            ("PROJECT", project_id),
+            ("CUSTOMER", customer_id),
+        )
+
+        for scope_type, scope_value in scope_checks:
+            if not scope_value:
+                continue
+            key = (scope_type, normalize_ref_value(scope_value), normalized_description)
+            hit = index.get(key)
+            if hit:
+                return hit
+
         return None
-    
-    def _get_override_cache(self) -> List[Dict]:
+
+    def _get_override_index(self) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
         """
-        Get cached override rows, refreshing if stale.
-        Uses same TTL as Material Master cache.
+        Get the override index, refreshing from Smartsheet if stale.
+
+        The index maps (scope_type, scope_value, nesting_desc) → {canonical_code, sap_code}.
+        All key parts are normalized so lookup is a direct dict hit:
+            - scope_type: uppercased ("LPO", "BRAND", ...)
+            - scope_value: normalize_ref_value (strips trailing .0 from TEXT_NUMBER cells)
+            - nesting_desc: lowercased + whitespace-collapsed + special-chars stripped
+
+        Inactive rows (ACTIVE=No) are excluded at index-build time.
         """
         from shared.logical_names import Sheet
-        
+        from shared.helpers import normalize_ref_value
+
         now = datetime.utcnow()
-        
+
         if self._override_cache_timestamp:
             age = (now - self._override_cache_timestamp).total_seconds()
             if age < self.CACHE_TTL_SECONDS:
-                return self._override_cache
-        
-        # Refresh cache
+                return self._override_index
+
         try:
-            self._override_cache = self._client.get_all_rows(Sheet.MAPPING_OVERRIDE)
+            rows = self._client.get_all_rows(Sheet.MAPPING_OVERRIDE)
+            col_ids = self._get_override_column_ids()
+
+            new_index: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+            skipped_inactive = 0
+
+            for row in rows:
+                cells = {c.get("columnId"): c.get("value") for c in row.get("cells", [])}
+
+                active = str(cells.get(col_ids.get("ACTIVE"), "Yes")).strip().lower()
+                if active in ("no", "false", "0"):
+                    skipped_inactive += 1
+                    continue
+
+                scope_type = str(cells.get(col_ids["SCOPE_TYPE"]) or "").strip().upper()
+                scope_value = normalize_ref_value(cells.get(col_ids["SCOPE_VALUE"]))
+                nesting_desc = self._normalize_description(
+                    str(cells.get(col_ids["NESTING_DESCRIPTION"]) or "")
+                )
+
+                if not (scope_type and scope_value and nesting_desc):
+                    continue
+
+                new_index[(scope_type, scope_value, nesting_desc)] = {
+                    "canonical_code": cells.get(col_ids["CANONICAL_CODE"]),
+                    "sap_code": cells.get(col_ids["SAP_CODE"]),
+                }
+
+            self._override_index = new_index
             self._override_cache_timestamp = now
-            logger.info(f"Override cache refreshed: {len(self._override_cache)} entries")
+            logger.info(
+                f"Override index refreshed: {len(new_index)} active entries "
+                f"({skipped_inactive} inactive skipped)"
+            )
         except Exception as e:
-            logger.warning(f"Error refreshing override cache: {e}")
-            # Serve stale cache if available, but reset timestamp to avoid
-            # hammering the API on every subsequent call
-            if self._override_cache:
+            logger.warning(f"Error refreshing override index: {e}")
+            # Serve stale index if available; otherwise empty (will retry next call)
+            if self._override_index:
                 self._override_cache_timestamp = now
-                return self._override_cache
-            self._override_cache = []
-        
-        return self._override_cache
+
+        return self._override_index
     
     def _get_override_column_ids(self) -> Dict[str, int]:
         """Get column IDs for Mapping Override from manifest."""
@@ -677,47 +663,36 @@ class MappingService:
     ) -> str:
         """
         Log mapping decision to history table.
-        
+
         Returns the History ID.
         """
-        from shared.logical_names import Sheet
+        from shared.logical_names import Sheet, Column
         from shared.helpers import now_uae, format_datetime_for_smartsheet
 
-        history_id = str(uuid4())[:8]  # Short ID for readability
+        history_id = str(uuid4())[:8]
 
         try:
-            col_ids = self._get_history_column_ids()
-            
+            # add_row resolves logical column names via the manifest, so use logical
+            # names as keys (NOT column IDs — those would be silently dropped by add_row).
             row_data = {
-                col_ids["HISTORY_ID"]: history_id,
-                col_ids["INGEST_LINE_ID"]: ingest_line_id,
-                col_ids["NESTING_DESCRIPTION"]: nesting_description,
-                col_ids["CANONICAL_CODE"]: result.canonical_code or "",
-                col_ids["SAP_CODE"]: result.sap_code or "",
-                col_ids["DECISION"]: result.decision,
-                col_ids["TRACE_ID"]: trace_id,
-                col_ids["CREATED_AT"]: format_datetime_for_smartsheet(now_uae()),
-                col_ids["NOTES"]: result.error or "",
-                
-                # Persist conversion context if columns exist
-                col_ids.get("UOM"): result.uom,
-                col_ids.get("CONVERSION_FACTOR"): result.conversion_factor,
+                Column.MAPPING_HISTORY.HISTORY_ID: history_id,
+                Column.MAPPING_HISTORY.INGEST_LINE_ID: ingest_line_id,
+                Column.MAPPING_HISTORY.NESTING_DESCRIPTION: nesting_description,
+                Column.MAPPING_HISTORY.CANONICAL_CODE: result.canonical_code or "",
+                Column.MAPPING_HISTORY.SAP_CODE: result.sap_code or "",
+                Column.MAPPING_HISTORY.DECISION: result.decision,
+                Column.MAPPING_HISTORY.TRACE_ID: trace_id,
+                Column.MAPPING_HISTORY.CREATED_AT: format_datetime_for_smartsheet(now_uae()),
+                Column.MAPPING_HISTORY.NOTES: result.error or "",
             }
-            
+
             self._client.add_row(Sheet.MAPPING_HISTORY, row_data)
-            
+
         except Exception as e:
             logger.error(f"Error logging history: {e}")
-        
+
         return history_id
-    
-    def _get_history_column_ids(self) -> Dict[str, int]:
-        """Get column IDs for Mapping History from manifest."""
-        from shared.manifest import get_manifest
-        
-        manifest = get_manifest()
-        return manifest.get_all_column_ids("MAPPING_HISTORY")
-    
+
     def _create_exception(
         self,
         ingest_line_id: str,
@@ -726,40 +701,31 @@ class MappingService:
     ) -> str:
         """
         Create exception for unmapped material.
-        
+
         Returns the Exception ID.
         """
-        from shared.logical_names import Sheet
+        from shared.logical_names import Sheet, Column
         from shared.helpers import now_uae, format_datetime_for_smartsheet
 
         exception_id = f"MAPEX-{str(uuid4())[:8]}"
-        
+
         try:
-            col_ids = self._get_exception_column_ids()
-            
             row_data = {
-                col_ids["EXCEPTION_ID"]: exception_id,
-                col_ids["INGEST_LINE_ID"]: ingest_line_id,
-                col_ids["NESTING_DESCRIPTION"]: nesting_description,
-                col_ids["STATUS"]: "OPEN",
-                col_ids["CREATED_AT"]: format_datetime_for_smartsheet(now_uae()),
-                col_ids["TRACE_ID"]: trace_id,
+                Column.MAPPING_EXCEPTION.EXCEPTION_ID: exception_id,
+                Column.MAPPING_EXCEPTION.INGEST_LINE_ID: ingest_line_id,
+                Column.MAPPING_EXCEPTION.NESTING_DESCRIPTION: nesting_description,
+                Column.MAPPING_EXCEPTION.STATUS: "OPEN",
+                Column.MAPPING_EXCEPTION.CREATED_AT: format_datetime_for_smartsheet(now_uae()),
+                Column.MAPPING_EXCEPTION.TRACE_ID: trace_id,
             }
 
             self._client.add_row(Sheet.MAPPING_EXCEPTION, row_data)
-            
+
         except Exception as e:
             logger.error(f"Error creating exception: {e}")
-        
+
         return exception_id
-    
-    def _get_exception_column_ids(self) -> Dict[str, int]:
-        """Get column IDs for Mapping Exception from manifest."""
-        from shared.manifest import get_manifest
-        
-        manifest = get_manifest()
-        return manifest.get_all_column_ids("MAPPING_EXCEPTION")
-    
+
     # ── Cache management ────────────────────────────────────────────────
     
     def invalidate_cache(self) -> None:
@@ -784,7 +750,7 @@ class MappingService:
             return {
                 "material_master_entries": len(self._material_master_cache),
                 "catalog_entries": len(self._catalog_cache),
-                "override_entries": len(self._override_cache),
+                "override_entries": len(self._override_index),
                 "master_cache_age_seconds": master_age,
                 "catalog_cache_age_seconds": catalog_age,
                 "ttl_seconds": self.CACHE_TTL_SECONDS,

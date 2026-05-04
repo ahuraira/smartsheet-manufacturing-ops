@@ -39,11 +39,27 @@ def mapping_service(mock_smartsheet_client):
     # Clear caches explicitly
     service._material_master_cache = {}
     service._catalog_cache = {}
-    service._override_cache = []
+    service._override_index = {}
     service._cache_timestamp = None
     service._catalog_cache_timestamp = None
     service._override_cache_timestamp = None
     return service
+
+
+def _seed_override_index(service, entries):
+    """
+    Seed override index directly with normalized keys.
+
+    entries is a list of (scope_type, scope_value, nesting_desc, canonical_code, sap_code).
+    Caller is responsible for providing already-normalized values (lowercase desc,
+    plain string scope_value), since that's what the real index stores.
+    """
+    for scope_type, scope_value, nesting_desc, canonical_code, sap_code in entries:
+        service._override_index[(scope_type, scope_value, nesting_desc)] = {
+            "canonical_code": canonical_code,
+            "sap_code": sap_code,
+        }
+    service._override_cache_timestamp = datetime.utcnow()
 
 
 # ── Helper: Populate 05a Material Master cache directly ────────────────
@@ -112,25 +128,11 @@ class TestMappingServiceV2:
             ("10005678", "CAN-TAPE-001", "m", "ROL", 25.0),  # KIMMCO
         ])
 
-        # Mock override cache with BRAND override
-        with patch.object(mapping_service, '_get_override_column_ids', return_value={
-            "SCOPE_TYPE": 1, "SCOPE_VALUE": 2, "NESTING_DESCRIPTION": 3,
-            "CANONICAL_CODE": 4, "SAP_CODE": 5, "ACTIVE": 6,
-            "EFFECTIVE_FROM": 7, "EFFECTIVE_TO": 8,
-        }):
-            mapping_service._override_cache = [
-                {"cells": [
-                    {"columnId": 1, "value": "BRAND"},
-                    {"columnId": 2, "value": "KIMMCO"},
-                    {"columnId": 3, "value": "aluminum tape"},
-                    {"columnId": 4, "value": "CAN-TAPE-001"},
-                    {"columnId": 5, "value": "10005678"},
-                    {"columnId": 6, "value": "Yes"},
-                ]},
-            ]
-            mapping_service._override_cache_timestamp = datetime.utcnow()
+        _seed_override_index(mapping_service, [
+            ("BRAND", "KIMMCO", "aluminum tape", "CAN-TAPE-001", "10005678"),
+        ])
 
-            result = mapping_service.lookup("Aluminum Tape", brand="KIMMCO")
+        result = mapping_service.lookup("Aluminum Tape", brand="KIMMCO")
 
         assert result.success is True
         assert result.decision == "OVERRIDE"
@@ -150,36 +152,14 @@ class TestMappingServiceV2:
             ("10009999", "CAN-TAPE-001", "m", "ROL", 30.0),
         ])
 
-        with patch.object(mapping_service, '_get_override_column_ids', return_value={
-            "SCOPE_TYPE": 1, "SCOPE_VALUE": 2, "NESTING_DESCRIPTION": 3,
-            "CANONICAL_CODE": 4, "SAP_CODE": 5, "ACTIVE": 6,
-            "EFFECTIVE_FROM": 7, "EFFECTIVE_TO": 8,
-        }):
-            mapping_service._override_cache = [
-                # BRAND override → 10005678
-                {"cells": [
-                    {"columnId": 1, "value": "BRAND"},
-                    {"columnId": 2, "value": "WTI"},
-                    {"columnId": 3, "value": "aluminum tape"},
-                    {"columnId": 4, "value": "CAN-TAPE-001"},
-                    {"columnId": 5, "value": "10005678"},
-                    {"columnId": 6, "value": "Yes"},
-                ]},
-                # LPO override → 10009999
-                {"cells": [
-                    {"columnId": 1, "value": "LPO"},
-                    {"columnId": 2, "value": "LPO-001"},
-                    {"columnId": 3, "value": "aluminum tape"},
-                    {"columnId": 4, "value": "CAN-TAPE-001"},
-                    {"columnId": 5, "value": "10009999"},
-                    {"columnId": 6, "value": "Yes"},
-                ]},
-            ]
-            mapping_service._override_cache_timestamp = datetime.utcnow()
+        _seed_override_index(mapping_service, [
+            ("BRAND", "WTI", "aluminum tape", "CAN-TAPE-001", "10005678"),
+            ("LPO", "LPO-001", "aluminum tape", "CAN-TAPE-001", "10009999"),
+        ])
 
-            result = mapping_service.lookup(
-                "Aluminum Tape", brand="WTI", lpo_id="LPO-001"
-            )
+        result = mapping_service.lookup(
+            "Aluminum Tape", brand="WTI", lpo_id="LPO-001"
+        )
 
         assert result.decision == "OVERRIDE"
         assert result.sap_code == "10009999"  # LPO wins
@@ -196,8 +176,8 @@ class TestMappingServiceV2:
             ("20001111", "CAN-SIL-001", "kg", "KG", 1.0),
         ])
 
-        # Empty override cache
-        mapping_service._override_cache = []
+        # Empty override index
+        mapping_service._override_index = {}
         mapping_service._override_cache_timestamp = datetime.utcnow()
 
         result = mapping_service.lookup("Silicone", brand="WTI")
@@ -253,20 +233,19 @@ class TestMappingServiceV2:
         mapping_service._material_master_cache = {}
         mapping_service._cache_timestamp = datetime.utcnow()
 
-        with patch.object(mapping_service, '_get_exception_column_ids', return_value={
-            "EXCEPTION_ID": 1, "INGEST_LINE_ID": 2, "NESTING_DESCRIPTION": 3,
-            "STATUS": 4, "CREATED_AT": 5, "TRACE_ID": 6
-        }):
-            with patch.object(mapping_service, '_get_history_column_ids', return_value={
-                "HISTORY_ID": 1, "INGEST_LINE_ID": 2, "NESTING_DESCRIPTION": 3,
-                "CANONICAL_CODE": 4, "SAP_CODE": 5, "DECISION": 6,
-                "TRACE_ID": 7, "CREATED_AT": 8, "NOTES": 9
-            }):
-                result = mapping_service.lookup("Unobtainium")
+        result = mapping_service.lookup("Unobtainium")
 
         assert result.success is False
         assert result.decision == "REVIEW"
         assert result.exception_id.startswith("MAPEX-")
+        # Both exception and history rows must have been written via add_row
+        # (using logical column names — verifies the empty-rows bug fix)
+        assert mock_smartsheet_client.add_row.call_count == 2
+        history_call = mock_smartsheet_client.add_row.call_args_list[0]
+        exception_call = mock_smartsheet_client.add_row.call_args_list[1]
+        # The row_data dicts must have at least one logical-name key, not just integers
+        assert any(isinstance(k, str) for k in history_call.args[1].keys())
+        assert any(isinstance(k, str) for k in exception_call.args[1].keys())
 
     # ── Cache Logic ────────────────────────────────────────────────────
 
@@ -349,13 +328,90 @@ class TestMappingServiceV2:
             assert result.sap_uom == "SHT"
             assert result.conversion_factor == 3.72
 
+    # ── Override Index Build (regression: .0 from TEXT_NUMBER) ─────────
+
+    def test_lpo_override_matches_when_smartsheet_returns_float(self, mapping_service, mock_smartsheet_client):
+        """
+        Smartsheet TEXT_NUMBER columns return numeric LPOs as floats (e.g. 2551040.0).
+        The override index must normalize these so a lookup with lpo_id='2551040'
+        still matches the row whose SCOPE_VALUE comes back as 2551040.0.
+        """
+        _seed_master_cache(mapping_service, [
+            ("aluminum tape", "CAN-TAPE-001", "DEFAULT-SAP"),
+        ])
+        _seed_catalog_cache(mapping_service, [
+            ("DEFAULT-SAP", "CAN-TAPE-001", "m", "ROL", 1.0),
+            ("OVERRIDE-SAP", "CAN-TAPE-001", "m", "ROL", 2.0),
+        ])
+
+        with patch.object(mapping_service, '_get_override_column_ids', return_value={
+            "SCOPE_TYPE": 1, "SCOPE_VALUE": 2, "NESTING_DESCRIPTION": 3,
+            "CANONICAL_CODE": 4, "SAP_CODE": 5, "ACTIVE": 6,
+        }):
+            # SCOPE_VALUE comes back as float 2551040.0 (Smartsheet TEXT_NUMBER quirk)
+            mock_smartsheet_client.get_all_rows.return_value = [{
+                "id": 1,
+                "cells": [
+                    {"columnId": 1, "value": "LPO"},
+                    {"columnId": 2, "value": 2551040.0},  # ← float, not string
+                    {"columnId": 3, "value": "aluminum tape"},
+                    {"columnId": 4, "value": "CAN-TAPE-001"},
+                    {"columnId": 5, "value": "OVERRIDE-SAP"},
+                    {"columnId": 6, "value": "Yes"},
+                ],
+            }]
+            mapping_service._override_index = {}
+            mapping_service._override_cache_timestamp = None
+
+            result = mapping_service.lookup(
+                "Aluminum Tape", lpo_id="2551040"  # ← string, no .0
+            )
+
+        assert result.decision == "OVERRIDE"
+        assert result.sap_code == "OVERRIDE-SAP"
+
+    def test_inactive_overrides_excluded_from_index(self, mapping_service, mock_smartsheet_client):
+        """ACTIVE=No rows must not contribute to the index."""
+        _seed_master_cache(mapping_service, [
+            ("silicone", "CAN-SIL", "DEFAULT-SAP"),
+        ])
+        _seed_catalog_cache(mapping_service, [
+            ("DEFAULT-SAP", "CAN-SIL", "kg", "KG", 1.0),
+        ])
+
+        with patch.object(mapping_service, '_get_override_column_ids', return_value={
+            "SCOPE_TYPE": 1, "SCOPE_VALUE": 2, "NESTING_DESCRIPTION": 3,
+            "CANONICAL_CODE": 4, "SAP_CODE": 5, "ACTIVE": 6,
+        }):
+            mock_smartsheet_client.get_all_rows.return_value = [{
+                "id": 1,
+                "cells": [
+                    {"columnId": 1, "value": "BRAND"},
+                    {"columnId": 2, "value": "WTI"},
+                    {"columnId": 3, "value": "silicone"},
+                    {"columnId": 4, "value": "CAN-SIL"},
+                    {"columnId": 5, "value": "STALE-SAP"},
+                    {"columnId": 6, "value": "No"},  # inactive
+                ],
+            }]
+            mapping_service._override_index = {}
+            mapping_service._override_cache_timestamp = None
+
+            result = mapping_service.lookup("Silicone", brand="WTI")
+
+        # Should fall through to default, ignoring the inactive override
+        assert result.decision == "AUTO"
+        assert result.sap_code == "DEFAULT-SAP"
+
     # ── Cache Stats ────────────────────────────────────────────────────
 
     def test_get_cache_stats(self, mapping_service):
         """Verify cache stats report all three caches."""
         _seed_master_cache(mapping_service, [("test", "CAN-TEST", "SAP-TEST")])
         _seed_catalog_cache(mapping_service, [("SAP-TEST", "CAN-TEST", "m", "M", 1.0)])
-        mapping_service._override_cache = [{"cells": []}]
+        _seed_override_index(mapping_service, [
+            ("LPO", "X", "test", "CAN-TEST", "SAP-TEST"),
+        ])
 
         stats = mapping_service.get_cache_stats()
 

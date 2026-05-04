@@ -114,6 +114,46 @@ def _generate_allocation_id(client) -> str:
     return generate_next_allocation_id(client)
 
 
+def _existing_allocations_for_session(
+    client,
+    nest_session_id: str,
+    trace_id: str = "",
+) -> List[Dict]:
+    """
+    Return prior ALLOCATION_LOG rows for this nest_session_id (idempotency check).
+
+    A non-empty result means this session was already allocated and the caller
+    should NOT create new rows. Each dict has: allocation_id, material_code,
+    quantity, stock_check_flag.
+    """
+    manifest = get_manifest()
+    col_session = manifest.get_column_name(Sheet.ALLOCATION_LOG, Column.ALLOCATION_LOG.NEST_SESSION_ID)
+    col_alloc_id = manifest.get_column_name(Sheet.ALLOCATION_LOG, Column.ALLOCATION_LOG.ALLOCATION_ID)
+    col_material = manifest.get_column_name(Sheet.ALLOCATION_LOG, Column.ALLOCATION_LOG.MATERIAL_CODE)
+    col_qty = manifest.get_column_name(Sheet.ALLOCATION_LOG, Column.ALLOCATION_LOG.QUANTITY)
+    col_flag = manifest.get_column_name(Sheet.ALLOCATION_LOG, Column.ALLOCATION_LOG.STOCK_CHECK_FLAG)
+
+    try:
+        rows = client.find_rows(Sheet.ALLOCATION_LOG, Column.ALLOCATION_LOG.NEST_SESSION_ID, nest_session_id)
+    except Exception as e:
+        logger.warning(f"[{trace_id}] Idempotency lookup failed for {nest_session_id}: {e}")
+        return []
+
+    out: List[Dict] = []
+    for r in rows or []:
+        # find_rows returns dicts keyed by physical column names (via _row_to_dict)
+        sess = r.get(col_session)
+        if sess and str(sess) != str(nest_session_id):
+            continue
+        out.append({
+            "allocation_id": r.get(col_alloc_id) or "",
+            "material_code": r.get(col_material) or "",
+            "quantity": parse_float_safe(r.get(col_qty), default=0.0),
+            "stock_check_flag": r.get(col_flag) or "Green",
+        })
+    return out
+
+
 # ── Main allocation function ────────────────────────────────────────
 def allocate_for_session(
     client,
@@ -156,6 +196,35 @@ def allocate_for_session(
         f"[{trace_id}] Starting allocation for session={nest_session_id}, "
         f"tag={tag_id}, date={planned_date}, shift={shift}"
     )
+
+    # ── Step 0: Idempotency — skip if this session was already allocated ──
+    # Power Automate retries on timeout; without this guard a second call
+    # would create a duplicate ALLOCATION_LOG row per material.
+    existing = _existing_allocations_for_session(client, nest_session_id, trace_id)
+    if existing:
+        logger.info(
+            f"[{trace_id}] Session {nest_session_id} already allocated "
+            f"({len(existing)} rows); returning existing allocations idempotently."
+        )
+        result.allocation_ids = [a["allocation_id"] for a in existing]
+        result.lines = [
+            AllocationLine(
+                allocation_id=a["allocation_id"],
+                material_code=a["material_code"],
+                quantity=a["quantity"],
+                stock_check_flag=a.get("stock_check_flag", "Green"),
+                net_available=0.0,
+            )
+            for a in existing
+        ]
+        # Status reflects whatever was already written; assume ALLOCATED unless
+        # any existing row has a Red/Yellow flag.
+        flags = {a.get("stock_check_flag") for a in existing}
+        if "Red" in flags:
+            result.status = "PARTIAL_ALLOCATED" if flags - {"Red"} else "SHORTAGE"
+        elif "Yellow" in flags:
+            result.status = "PARTIAL_ALLOCATED"
+        return result
 
     # ── Step 1: Read PARSED_BOM ─────────────────────────────────────
     col_bom_session      = manifest.get_column_name(Sheet.PARSED_BOM, Column.PARSED_BOM.NEST_SESSION_ID)

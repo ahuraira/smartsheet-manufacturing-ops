@@ -642,67 +642,96 @@ class SmartsheetClient:
         return self.find_row(sheet_ref, column_ref, value)
     
     @retry_with_backoff(max_retries=3)
+    def _build_cells(
+        self,
+        sheet_ref: Union[str, int],
+        sheet_id: int,
+        row_data: Dict[str, Any],
+        skip_none: bool,
+    ) -> List[Dict[str, Any]]:
+        """
+        Resolve row_data keys (logical or physical column names) to columnIds and
+        build the Smartsheet cells array.
+
+        Strategy: prefer the in-memory manifest (zero API calls). Only fall back
+        to a full-sheet fetch if the manifest can't resolve every provided key —
+        this kept the previous behavior for legacy sheets not in the manifest,
+        while making the common case ~Nx faster.
+        """
+        sheet_logical = sheet_ref if (
+            isinstance(sheet_ref, str) and self._manifest.get_sheet_id(sheet_ref)
+        ) else None
+
+        # Fast path: try resolving via manifest only
+        cells: List[Dict[str, Any]] = []
+        unresolved: Dict[str, Any] = {}
+        if sheet_logical:
+            for key, val in row_data.items():
+                if skip_none and val is None:
+                    continue
+                col_id = self._manifest.get_column_id(sheet_logical, key)
+                if col_id is None:
+                    # Try treating `key` as a physical name → look up its logical mapping
+                    # by scanning manifest columns
+                    sheets = self._manifest._data.get("sheets", {}) if self._manifest._data else {}
+                    sheet_info = sheets.get(sheet_logical, {})
+                    for _logical, info in sheet_info.get("columns", {}).items():
+                        if info.get("name") == key and info.get("id"):
+                            col_id = info["id"]
+                            break
+                if col_id is not None:
+                    cells.append({"columnId": col_id, "value": val, "strict": False})
+                else:
+                    unresolved[key] = val
+            if not unresolved:
+                return cells
+
+        # Slow path: any unresolved keys → fetch sheet metadata once
+        sheet_data = self.get_sheet(sheet_id)
+        columns = sheet_data.get("columns", [])
+        col_name_to_id = {col["title"]: col["id"] for col in columns}
+
+        keys_to_resolve = unresolved.items() if sheet_logical else row_data.items()
+        for key, val in keys_to_resolve:
+            if skip_none and val is None:
+                continue
+            col_id = col_name_to_id.get(key)
+            if col_id is None and sheet_logical:
+                physical = self._manifest.get_column_name(sheet_logical, key)
+                if physical:
+                    col_id = col_name_to_id.get(physical)
+            if col_id is not None:
+                cells.append({"columnId": col_id, "value": val, "strict": False})
+            else:
+                logger.warning(f"add/update row: column '{key}' not found in sheet {sheet_id}; skipping cell")
+
+        return cells
+
     def add_row(
-        self, 
-        sheet_ref: Union[str, int], 
+        self,
+        sheet_ref: Union[str, int],
         row_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Add a new row to a sheet.
-        
+
         Args:
             sheet_ref: Sheet reference
             row_data: Dict mapping column names (physical or logical) to values
-        
+
         Returns:
             Created row data
         """
         sheet_id = self.resolve_sheet_id(sheet_ref)
-        sheet_data = self.get_sheet(sheet_id)
-        columns = sheet_data.get("columns", [])
-        
-        col_name_to_id = {col["title"]: col["id"] for col in columns}
-        
-        # Resolve logical column names if using manifest
-        resolved_row_data = {}
-        sheet_logical = sheet_ref if isinstance(sheet_ref, str) and self._manifest.get_sheet_id(sheet_ref) else None
-        
-        for key, val in row_data.items():
-            if val is None:
-                continue
-            
-            # Try as physical name first
-            if key in col_name_to_id:
-                resolved_row_data[key] = val
-            elif sheet_logical:
-                # Try as logical name
-                physical_name = self._manifest.get_column_name(sheet_logical, key)
-                if physical_name and physical_name in col_name_to_id:
-                    resolved_row_data[physical_name] = val
-                else:
-                    # Keep as-is, might be physical name
-                    resolved_row_data[key] = val
-            else:
-                resolved_row_data[key] = val
-        
-        # Build cells array
-        cells = []
-        for col in columns:
-            col_name = col["title"]
-            if col_name in resolved_row_data:
-                cells.append({
-                    "columnId": col["id"],
-                    "value": resolved_row_data[col_name],
-                    "strict": False
-                })
-        
+        cells = self._build_cells(sheet_ref, sheet_id, row_data, skip_none=True)
+
         url = f"{self.base_url}/sheets/{sheet_id}/rows"
         payload = {"toBottom": True, "cells": cells}
-        
+
         response = self._make_request("POST", url, json=payload)
         result = response.json()
         created_row = result.get("result", {})
-        
+
         logger.info(f"Added row to sheet {self._sheet_label(sheet_ref, sheet_id)}: row_id={created_row.get('id')}")
         return created_row
     
@@ -725,40 +754,14 @@ class SmartsheetClient:
             Updated row data
         """
         sheet_id = self.resolve_sheet_id(sheet_ref)
-        sheet_data = self.get_sheet(sheet_id)
-        columns = sheet_data.get("columns", [])
-        
-        col_name_to_id = {col["title"]: col["id"] for col in columns}
-        
-        # Resolve logical column names if using manifest
-        resolved_updates = {}
-        sheet_logical = sheet_ref if isinstance(sheet_ref, str) and self._manifest.get_sheet_id(sheet_ref) else None
-        
-        for key, val in updates.items():
-            if key in col_name_to_id:
-                resolved_updates[key] = val
-            elif sheet_logical:
-                physical_name = self._manifest.get_column_name(sheet_logical, key)
-                if physical_name:
-                    resolved_updates[physical_name] = val
-        
-        # Build cells array
-        cells = []
-        for col in columns:
-            col_name = col["title"]
-            if col_name in resolved_updates:
-                cells.append({
-                    "columnId": col["id"],
-                    "value": resolved_updates[col_name],
-                    "strict": False
-                })
-        
+        cells = self._build_cells(sheet_ref, sheet_id, updates, skip_none=False)
+
         url = f"{self.base_url}/sheets/{sheet_id}/rows"
         payload = [{"id": row_id, "cells": cells}]
-        
+
         response = self._make_request("PUT", url, json=payload)
         result = response.json()
-        
+
         logger.info(f"Updated row {row_id} in sheet {self._sheet_label(sheet_ref, sheet_id)}")
         return result.get("result", [{}])[0]
     

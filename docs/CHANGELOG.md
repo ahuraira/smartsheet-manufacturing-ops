@@ -73,6 +73,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `wastage_pct` datatype mismatch (sending as float instead of string) in LPO ingestion.
 - Fixed `AttributeError` in `fn_ingest_tag` by ensuring `requested_delivery_date` is accessed as a dictionary key.
 
+#### CRITICAL: `MAPPING_HISTORY` and `MAPPING_EXCEPTION` Rows Written Empty (`fn_map_lookup/mapping_service.py`)
+- **Before:** `_log_history` and `_create_exception` passed Smartsheet column IDs as the keys of the `row_data` dict (e.g. `{785176475076484: "..."}`). `add_row` resolves keys as column **names** (logical or physical), so every cell silently dropped — every history/exception row was created with no values. 328 prior `MAPPING_HISTORY` rows are empty as a result.
+- **After:** Use logical-name keys (`Column.MAPPING_HISTORY.HISTORY_ID`, etc.). `add_row` resolves these via the manifest and writes the cells correctly.
+- **Regression test:** `test_no_match_creates_exception` now asserts the dict keys reaching `add_row` are strings (logical names), not bare column IDs.
+
+#### CRITICAL: Duplicate `ALLOCATION_LOG` Rows on Power Automate Retry (`shared/allocation_engine.py`)
+- **Before:** `allocate_for_session` had no idempotency check on `nest_session_id`. When Power Automate timed out and retried, every retry created a new ALLOCATION_LOG row per material — doubling/tripling allocations against stock.
+- **After:** Added `_existing_allocations_for_session` — if any ALLOCATION_LOG rows already exist for the `nest_session_id`, the engine returns those existing allocations idempotently and skips writing. Both call sites (`fn_allocate` HTTP and `fn_parse_nesting` internal) inherit the guard.
+
+#### PERF: `add_row` / `update_row` Made the Function Slow Enough to Hit Power Automate's 120s Timeout (`shared/smartsheet_client.py`)
+- **Before:** Every `add_row` and `update_row` called `get_sheet(sheet_id)` to resolve column-name → column-id, which fetches the full sheet (all rows + all cells) just to read the column metadata. With ~30 row writes per nesting file across multiple sheets (`MAPPING_HISTORY`, `PARSED_BOM`, `ALLOCATION_LOG`, `INVENTORY_TXN_LOG`, `USER_ACTION_LOG`, …), this added many seconds of network/parse time per request — pushing `fn_parse_nesting` past Power Automate's 120s HTTP timeout. PA never saw the response, even though the function completed and wrote correctly.
+- **After:** Extracted `_build_cells()` that resolves columnIds via the in-memory manifest first (zero API calls). It only falls back to a sheet fetch if a key is unknown. Verified: an `add_row` to `MAPPING_HISTORY` now performs 0 `get_sheet` calls (was 1 full-sheet fetch).
+
+#### CRITICAL: LPO-scoped Material Overrides Were Silently Bypassed (`fn_map_lookup/mapping_service.py`)
+- **Before:** `_check_overrides` compared `str(cells.get(SCOPE_VALUE))` against the lookup `lpo_id`. Smartsheet returns `TEXT_NUMBER` cells as floats (`2551040.0`), so the comparison `"2551040.0" == "2551040"` always failed. Every LPO-scoped override silently fell through. When a `Brand` override happened to share the same SAP code, the result *looked* correct; otherwise the BOM line defaulted to the Material Master SAP code.
+- **After:** Replaced row-iteration with a normalized `_override_index` keyed by `(scope_type, normalize_ref_value(scope_value), normalized_nesting_desc)`. Index is built once per cache refresh; lookup is a single dict access per scope. `normalize_ref_value()` strips the trailing `.0` so float and string scope values match.
+- **Behavioral changes:** Inactive rows (`ACTIVE=No`) are excluded at index-build time. The in-line `EFFECTIVE_FROM`/`EFFECTIVE_TO` date filter was removed — to disable an override, set `ACTIVE=No`.
+- **Regression test:** `test_lpo_override_matches_when_smartsheet_returns_float` pins the float-vs-string match; `test_inactive_overrides_excluded_from_index` pins the active filter.
+
 #### CRITICAL: Variance Calculation Used User-Submitted Allocation Qty (`shared/consumption_service.py`)
 - **Before:** Variance check used `line.allocated_qty` from user's submission — user could bypass variance checks by submitting inflated qty.
 - **After:** Uses `material_info.allocated_qty` from system allocation records (via `aggregate_materials()`).
